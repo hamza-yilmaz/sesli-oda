@@ -46,14 +46,16 @@ pre.logo{font-size:15px;line-height:1.1;overflow:hidden}
 #left{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
 #top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--mut);padding:4px 10px}
 #centerArea{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;overflow:hidden}
-#screenBox{display:none;border:1px solid var(--mut);background:#000;position:relative;flex-direction:column;max-height:45%}
+#screenBox{display:none;border:1px solid var(--mut);background:#000;position:relative;flex-direction:column;max-height:50%}
 #screenBox.active{display:flex}
-#screenBox video{width:100%;height:100%;object-fit:contain;max-height:220px}
+#screenBox video{width:100%;height:100%;object-fit:contain;max-height:240px}
 #users{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px;align-content:start}
 .user{border:1px solid var(--mut);display:flex;flex-direction:column;min-width:0;background:var(--bg)}
 .user.speaking{border-color:var(--pri);box-shadow:0 0 8px rgba(51,255,0,.35)}
+.user.sharing{border-color:var(--amb);box-shadow:0 0 8px rgba(255,176,0,.4)}
 .user .uh{padding:0 8px;border-bottom:1px dashed var(--mut);display:flex;justify-content:space-between;gap:6px;overflow:hidden;white-space:nowrap;font-size:12px}
 .user.speaking .uh{background:var(--pri);color:#000;text-shadow:none}
+.user.sharing .uh{background:var(--amb);color:#000;text-shadow:none}
 .user .ub{padding:8px;display:flex;flex-direction:column;gap:6px}
 canvas.viz{width:100%;height:28px;background:rgba(0,0,0,.3);border:1px solid var(--mut);display:block}
 .vol{display:flex;gap:8px;align-items:center}
@@ -78,7 +80,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.4</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.4.1</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -114,7 +116,7 @@ select:focus{border-color:var(--pri)}
     </div>
     <div id="centerArea">
       <div class="win" id="screenBox">
-        <div class="title"><span>+--- EKRAN PAYLAŞIMI ---+</span> <button class="btn sm red" id="stopScreenBtn">kapat</button></div>
+        <div class="title"><span id="screenTitle">+--- EKRAN PAYLAŞIMI ---+</span> <button class="btn sm red" id="stopScreenBtn">kapat</button></div>
         <video id="screenVideo" autoplay playsinline></video>
       </div>
       <div id="users"></div>
@@ -191,7 +193,7 @@ const PREFIX='sesliodayilmaz-';
 let peer,myName,myPeerId,roomCode,isHost=false;
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
-let screenStream=null, currentCall=null;
+let screenStream=null, activeScreenPeerId=null;
 let conns={};
 let memberList=[];
 let typingUsers=new Set();
@@ -443,9 +445,11 @@ function renderUsers(){
   const box=$('users');box.innerHTML='';
   const mk=(id,name,me)=>{
     const d=document.createElement('div');d.className='user';d.dataset.id=id;
+    if(id===activeScreenPeerId || (me && screenStream)) d.classList.add('sharing');
     const pingText=me?'[local]':(conns[id]?.ping!==undefined?`[${conns[id].ping}ms]`:'[...]');
+    const sharingBadge=(id===activeScreenPeerId || (me && screenStream))?' <span class="amb">[ekran]</span>':'';
     d.innerHTML=`<div class="uh"><span>+-- ${me?'sen':name} --+</span><span class="dim">${pingText}</span></div>`+
-                `<div class="ub"><canvas id="viz-${id}" width="200" height="28" class="viz"></canvas><div class="uname">&gt; ${name}</div></div>`;
+                `<div class="ub"><canvas id="viz-${id}" width="200" height="28" class="viz"></canvas><div class="uname">&gt; ${name}${sharingBadge}</div></div>`;
     if(!me){
       const c=conns[id];
       const ctl=document.createElement('div');ctl.className='vol';
@@ -477,6 +481,9 @@ function setupData(id,data){
   data.on('open',()=>{
     data.send({t:'hello',name:myName});
     updateMemberList();
+    if(screenStream){
+      data.send({t:'screen_start'});
+    }
   });
   data.on('data',m=>{
     if(conns[id]) conns[id].lastSeen=Date.now();
@@ -518,6 +525,18 @@ function onData(id,m){
       typingUsers.delete(c.name||'biri');
     }
     updateTypingIndicator();
+  }else if(m.t==='screen_start'){
+    activeScreenPeerId=id;
+    renderUsers();
+    addMsg('sistem', (c.name||'kullanıcı') + ' ekran paylaşımını başlattı.');
+  }else if(m.t==='screen_stop'){
+    if(activeScreenPeerId===id){
+      activeScreenPeerId=null;
+      $('screenBox').classList.remove('active');
+      $('screenVideo').srcObject=null;
+      addMsg('sistem', (c.name||'kullanıcı') + ' ekran paylaşımını sonlandırdı.');
+      renderUsers();
+    }
   }
 }
 
@@ -535,7 +554,6 @@ function updateTypingIndicator(){
 function connectTo(id){
   if(conns[id] && conns[id].data && conns[id].data.open) return;
   const data=peer.connect(id,{reliable:true});setupData(id,data);
-  // Bağlantı kurulduğunda kendi ses akışımızı gönder
   if(outStream){const call=peer.call(id,outStream);setupCall(id,call)}
 }
 
@@ -543,13 +561,15 @@ function setupCall(id,call){
   conns[id]=conns[id]||{vol:100,localMute:false,ping:undefined,lastSeen:Date.now()};
   conns[id].call=call;
   call.on('stream',st=>{
-    // Eğer gelen akış ekran paylaşımı videosu ise video elementine bas
+    // Eğer gelen akış ekran paylaşımı ise (video track içeriyorsa)
     if(st.getVideoTracks().length > 0){
+      activeScreenPeerId=id;
       const vEl=$('screenVideo');
       vEl.srcObject=st;
       vEl.play().catch(()=>{});
       $('screenBox').classList.add('active');
-      addMsg('sistem', (conns[id].name||'kullanıcı') + ' ekran paylaşımını başlattı.');
+      $('screenTitle').textContent='+--- '+(conns[id]?.name||'KULLANICI').toUpperCase()+' EKRANI ---+';
+      renderUsers();
       return;
     }
 
@@ -570,6 +590,11 @@ function dropPeer(id){
   const wasInRoom = !!c.name;
 
   if(c.audioEl){c.audioEl.srcObject=null}
+  if(activeScreenPeerId===id){
+    activeScreenPeerId=null;
+    $('screenBox').classList.remove('active');
+    $('screenVideo').srcObject=null;
+  }
   try{c.call&&c.call.close()}catch(e){}
   try{c.data&&c.data.close()}catch(e){}
 
@@ -664,26 +689,30 @@ $('joinBtn').onclick=async()=>{
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
 
-// Ekran Paylaşımı Mantığı
+// Ekran Paylaşımı Mantığı (Özel Video Akışı)
 $('screenBtn').onclick=async()=>{
   if(screenStream) return;
   try{
-    screenStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:true});
+    screenStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
     $('screenVideo').srcObject = screenStream;
     $('screenBox').classList.add('active');
+    $('screenTitle').textContent='+--- KENDİ EKRANIN ---+';
     $('screenBtn').classList.add('on');
     $('screenBtn').textContent='ekran paylaşılyor';
+    renderUsers();
 
-    // Odadaki herkese ekran akışını gönder
+    // Odadaki herkese ekran video akışını çağrı olarak gönder
     Object.keys(conns).forEach(id=>{
       if(peer && screenStream){
         peer.call(id, screenStream);
       }
     });
 
+    broadcast({t:'screen_start'});
+
     screenStream.getVideoTracks()[0].onended = ()=>stopScreenShare();
   }catch(e){
-    console.error(e);
+    console.error('Ekran paylaşımı başlatılamadı:', e);
   }
 };
 
@@ -696,6 +725,8 @@ function stopScreenShare(){
   $('screenVideo').srcObject=null;
   $('screenBtn').classList.remove('on');
   $('screenBtn').textContent='ekran paylaş';
+  broadcast({t:'screen_stop'});
+  renderUsers();
 }
 $('stopScreenBtn').onclick=stopScreenShare;
 
