@@ -10,9 +10,13 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 :root{--bg:#0a0a0a;--pri:#33ff00;--amb:#ffb000;--mut:#1f521f;--err:#ff3333;--glow:0 0 5px rgba(51,255,0,.5)}
+body.theme-cyber{--bg:#050b14;--pri:#00f0ff;--amb:#f0ff00;--mut:#0a354a;--err:#ff0055;--glow:0 0 5px rgba(0,240,255,.5)}
+body.theme-amber{--bg:#120c00;--pri:#ffb000;--amb:#33ff00;--mut:#52381f;--err:#ff3333;--glow:0 0 5px rgba(255,176,0,.5)}
+body.theme-crimson{--bg:#120505;--pri:#ff3333;--amb:#ffb000;--mut:#521f1f;--err:#33ff00;--glow:0 0 5px rgba(255,51,51,.5)}
+
 *{box-sizing:border-box;margin:0;padding:0;border-radius:0}
 html,body{height:100%}
-body{background:var(--bg);color:var(--pri);font-family:'JetBrains Mono','Fira Code',ui-monospace,Menlo,monospace;font-size:14px;line-height:1.5;text-shadow:var(--glow);display:flex;align-items:center;justify-content:center;padding:12px}
+body{background:var(--bg);color:var(--pri);font-family:'JetBrains Mono','Fira Code',ui-monospace,Menlo,monospace;font-size:14px;line-height:1.5;text-shadow:var(--glow);display:flex;align-items:center;justify-content:center;padding:12px;transition:background .3s,color .3s}
 body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px)}
 ::selection{background:var(--pri);color:#000}
 .win{border:1px solid var(--mut);background:var(--bg);display:flex;flex-direction:column;min-width:0}
@@ -24,7 +28,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;bac
 pre.logo{font-size:15px;line-height:1.1;overflow:hidden}
 .btn{font:inherit;color:var(--pri);background:transparent;border:0;cursor:pointer;padding:2px 4px;text-transform:uppercase;text-shadow:inherit}
 .btn::before{content:"[ "}.btn::after{content:" ]"}
-.btn:hover,.btn:focus-visible,.btn.on{background:var(--pri);color:#000;text-shadow:none;outline:0}
+.btn:hover,:focus-visible,.btn.on{background:var(--pri);color:#000;text-shadow:none;outline:0}
 .btn:active{transform:translateY(1px)}
 .btn.red{color:var(--err)}.btn.red:hover,.btn.red.on{background:var(--err);color:#000}
 .btn.sm{padding:0 2px;font-size:12px}
@@ -41,27 +45,27 @@ pre.logo{font-size:15px;line-height:1.1;overflow:hidden}
 #app{display:none;width:100%;height:100%;grid-template-columns:1fr 340px;gap:8px}
 #left{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
 #top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--mut);padding:4px 10px}
-#users{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;align-content:start}
-.user{border:1px solid var(--mut);display:flex;flex-direction:column;min-width:0}
+#users{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px;align-content:start}
+.user{border:1px solid var(--mut);display:flex;flex-direction:column;min-width:0;background:var(--bg)}
 .user.speaking{border-color:var(--pri);box-shadow:0 0 8px rgba(51,255,0,.35)}
-.user .uh{padding:0 8px;border-bottom:1px dashed var(--mut);display:flex;gap:6px;overflow:hidden;white-space:nowrap}
+.user .uh{padding:0 8px;border-bottom:1px dashed var(--mut);display:flex;justify-content:space-between;gap:6px;overflow:hidden;white-space:nowrap;font-size:12px}
 .user.speaking .uh{background:var(--pri);color:#000;text-shadow:none}
 .user .ub{padding:8px;display:flex;flex-direction:column;gap:6px}
+canvas.viz{width:100%;height:28px;background:rgba(0,0,0,.3);border:1px solid var(--mut);display:block}
 .vol{display:flex;gap:8px;align-items:center}
 input[type=range]{flex:1;min-width:0;accent-color:var(--pri);height:14px}
 #bar{border:1px solid var(--mut);padding:6px 8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-#right{min-height:0;min-width:0}
+#right{min-height:0;min-width:0;display:flex;flex-direction:column}
 #msgs{flex:1;min-height:0;overflow:auto;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
 .msg{word-break:break-word}.msg b{color:var(--amb);text-shadow:none}
 #chatForm{border-top:1px dashed var(--mut);padding:6px 10px}
-#settings{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);align-items:center;justify-content:center;z-index:50;padding:12px}
-#settings .win{width:min(460px,100%);max-height:94vh;overflow:auto}
+#settings,#soundboardModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);align-items:center;justify-content:center;z-index:50;padding:12px}
+#settings .win,#soundboardModal .win{width:min(460px,100%);max-height:94vh;overflow:auto}
+.sb-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 label.chk{display:flex;gap:8px;align-items:center;cursor:pointer}
 label.chk input{accent-color:var(--pri)}
 select{font:inherit;width:100%;color:var(--pri);background:var(--bg);border:1px solid var(--mut);padding:4px;outline:0}
 select:focus{border-color:var(--pri)}
-.glitch:hover{animation:gl .25s steps(2) 1}
-@keyframes gl{0%{transform:translate(1px,0)}50%{transform:translate(-1px,1px)}100%{transform:translate(0)}}
 @media(max-width:760px){body{align-items:flex-start}#app{grid-template-columns:1fr;grid-template-rows:1fr 250px}pre.logo{font-size:12px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
@@ -69,7 +73,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.1</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.2</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -78,19 +82,19 @@ select:focus{border-color:var(--pri)}
     <div class="dim">================================</div>
     <label class="pr"><span>user@oda:~$ ad</span><input type="text" id="nameIn" placeholder="adını yaz" maxlength="20" autocomplete="off"></label>
     <div class="tabs">
-      <button class="btn on" id="tabCreate">Yeni oda</button>
-      <button class="btn" id="tabJoin">Mevcut oda</button>
+      <button class="btn on" id="tabCreate">yeni oda</button>
+      <button class="btn" id="tabJoin">mevcut oda</button>
     </div>
     <div class="pane show" id="paneCreate">
       <div class="amb">&gt; --yeni-oda</div>
-      <div class="dim">6 haneli bir oda kodu üretilir. Kodu arkadaşlarına gönder, onlar "odaya katıl" sekmesinden girsin.</div>
-      <div><button class="btn" id="createBtn">Kur</button></div>
+      <div class="dim">6 haneli bir oda kodu üretilir. Kodu arkadaşlarına gönder, onlar "mevcut oda" sekmesinden girsin.</div>
+      <div><button class="btn" id="createBtn">kur</button></div>
     </div>
     <div class="pane" id="paneJoin">
       <div class="amb">&gt; --var-olan-odaya-gir</div>
       <div class="dim">Arkadaşının gönderdiği oda kodunu yaz veya linke tıkla.</div>
-      <label class="pr"><span>kod@oda:~$</span><input type="text" id="codeIn" placeholder="oda kodu" maxlength="30" autocomplete="off" autocapitalize="off"></label>
-      <div><button class="btn" id="joinBtn">Katıl</button></div>
+      <label class="pr"><span>kod@oda:~$</span><input type="text" id="codeIn" placeholder="oda kodu" maxlength="40" autocomplete="off" autocapitalize="off"></label>
+      <div><button class="btn" id="joinBtn">katıl</button></div>
     </div>
     <div id="lobbyMsg" class="amb"></div>
     <div class="dim">// sunucu yok, hesap yok. oda kapanınca her şey silinir.</div>
@@ -108,6 +112,7 @@ select:focus{border-color:var(--pri)}
       <button class="btn" id="muteBtn">mikrofon: açık</button>
       <button class="btn" id="deafBtn">ses: açık</button>
       <button class="btn" id="pttBtn" style="display:none">PTT: kapalı</button>
+      <button class="btn" id="sbOpenBtn">soundboard</button>
       <button class="btn" id="setBtn">ses ayarları</button>
       <button class="btn red" id="leaveBtn">ayrıl</button>
       <button class="btn" id="cancelLeave" style="display:none">hayır</button>
@@ -122,8 +127,14 @@ select:focus{border-color:var(--pri)}
 
 <div id="settings">
   <div class="win">
-    <div class="title"><span>+--- SES AYARLARI ---+</span></div>
+    <div class="title"><span>+--- SİSTEM AYARLARI ---+</span></div>
     <div class="body">
+      <div><div class="dim">arayüz teması</div><select id="themeSel">
+        <option value="">Matrix Yeşil (Varsayılan)</option>
+        <option value="theme-cyber">Cyberpunk Mavi</option>
+        <option value="theme-amber">Retro Amber</option>
+        <option value="theme-crimson">Crimson Kırmızı</option>
+      </select></div>
       <label class="chk"><input type="checkbox" id="nsChk" checked> gürültü bastırma (arka plan sesleri)</label>
       <label class="chk"><input type="checkbox" id="ecChk" checked> yankı engelleme</label>
       <label class="chk"><input type="checkbox" id="agcChk" checked> otomatik ses seviyesi</label>
@@ -143,6 +154,22 @@ select:focus{border-color:var(--pri)}
   </div>
 </div>
 
+<div id="soundboardModal">
+  <div class="win">
+    <div class="title"><span>+--- SOUNDBOARD ---+</span></div>
+    <div class="body">
+      <div class="dim">odadakilere anında eğlenceli ses efektleri gönder:</div>
+      <div class="sb-grid">
+        <button class="btn" onclick="triggerSound('tada')">🎉 alkış / tada</button>
+        <button class="btn" onclick="triggerSound('laugh')">😂 kahkaha</button>
+        <button class="btn" onclick="triggerSound('laser')">⚡ lazer</button>
+        <button class="btn" onclick="triggerSound('airhorn')">📢 havalı korna</button>
+      </div>
+      <div><button class="btn" id="sbCloseBtn">kapat</button></div>
+    </div>
+  </div>
+</div>
+
 <script>
 const $=id=>document.getElementById(id);
 const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]};
@@ -153,28 +180,27 @@ let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
 let conns={};
 
-// Kaydedilmiş ayarları yükle
 let savedData={};
 try{savedData=JSON.parse(localStorage.getItem('sesli_oda_cfg')||'{}')}catch(e){}
 
 let settings={
+  theme:savedData.theme||'',
   ns:savedData.ns??true,
   ec:savedData.ec??true,
   agc:savedData.agc??true,
   gate:savedData.gate??true,
   thr:savedData.thr??8,
   gain:savedData.gain??100,
-  mic:savedData.mic??'',
-  spk:savedData.spk??'',
+  mic:savedData.mic||'',
+  spk:savedData.spk||'',
   ptt:savedData.ptt??false,
-  pttKey:savedData.pttKey??'Space',
+  pttKey:savedData.pttKey||'Space',
   beep:savedData.beep??true
 };
 
-// Adı localStorage'dan doldur
+if(settings.theme){document.body.className=settings.theme;}
 if(savedData.name)$('nameIn').value=savedData.name;
 
-// URL üzerinden oda kodu kontrolü (örn: ?oda=xyz veya direkt girilmişse)
 window.addEventListener('DOMContentLoaded',()=>{
   const params=new URLSearchParams(window.location.search);
   const codeParam=params.get('oda')||params.get('room');
@@ -188,6 +214,7 @@ function saveSettings(){
   try{
     localStorage.setItem('sesli_oda_cfg',JSON.stringify({
       name:($('nameIn').value||'').trim(),
+      theme:settings.theme,
       ns:settings.ns,ec:settings.ec,agc:settings.agc,gate:settings.gate,
       thr:settings.thr,gain:settings.gain,mic:settings.mic,spk:settings.spk,
       ptt:settings.ptt,pttKey:settings.pttKey,beep:settings.beep
@@ -198,7 +225,6 @@ function saveSettings(){
 function genCode(){const c='abcdefghjkmnpqrstuvwxyz23456789';let s='';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s}
 function msg(t,ok){$('lobbyMsg').textContent=t?((ok?'[OK] ':'[ERR] ')+t):''}
 
-// Yazı makinesi efekti
 (function(){
   const t='> sunucusuz sesli oda başlatılıyor...';const el=$('tw');
   if(matchMedia('(prefers-reduced-motion:reduce)').matches){el.textContent=t;return}
@@ -218,34 +244,77 @@ $('tabCreate').onclick=()=>showTab('create');
 $('tabJoin').onclick=()=>showTab('join');
 $('codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('joinBtn').click()});
 
-// Bip sesi üretici (Tarayıcının kendi ses üreteci, dosya gerektirmez)
 function playBeep(type){
   if(!settings.beep || !audioCtx) return;
   try{
     if(audioCtx.state==='suspended') audioCtx.resume();
     const osc=audioCtx.createOscillator();
     const gain=audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    
+    osc.connect(gain); gain.connect(audioCtx.destination);
     if(type==='in'){
-      // Giriş: Neşeli iki ton (C5 -> G5)
       osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
       osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.08);
       gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.25);
     } else {
-      // Çıkış: Düşen ton (G5 -> C5)
       osc.frequency.setValueAtTime(783.99, audioCtx.currentTime);
       osc.frequency.setValueAtTime(523.25, audioCtx.currentTime + 0.08);
       gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.25);
+    }
+    osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+  }catch(e){}
+}
+
+function playSoundEffect(name){
+  if(!audioCtx) return;
+  try{
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+
+    if(name==='tada'){
+      osc.frequency.setValueAtTime(440, t);
+      osc.frequency.setValueAtTime(554.37, t+0.1);
+      osc.frequency.setValueAtTime(659.25, t+0.2);
+      osc.frequency.setValueAtTime(880, t+0.3);
+      gain.gain.setValueAtTime(0.1, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t+0.6);
+      osc.start(t); osc.stop(t+0.6);
+    }else if(name==='laugh'){
+      [0, 0.12, 0.24, 0.36].forEach((offset, idx)=>{
+        const o=audioCtx.createOscillator();
+        const g=audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.frequency.setValueAtTime(300 + idx*40, t+offset);
+        g.gain.setValueAtTime(0.08, t+offset);
+        g.gain.exponentialRampToValueAtTime(0.001, t+offset+0.1);
+        o.start(t+offset); o.stop(t+offset+0.1);
+      });
+    }else if(name==='laser'){
+      osc.type='sawtooth';
+      osc.frequency.setValueAtTime(900, t);
+      osc.frequency.exponentialRampToValueAtTime(100, t+0.3);
+      gain.gain.setValueAtTime(0.1, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t+0.3);
+      osc.start(t); osc.stop(t+0.3);
+    }else if(name==='airhorn'){
+      osc.type='square';
+      osc.frequency.setValueAtTime(466.16, t);
+      osc.frequency.setValueAtTime(466.16, t+0.2);
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t+0.4);
+      osc.start(t); osc.stop(t+0.4);
     }
   }catch(e){}
+}
+
+function triggerSound(name){
+  playSoundEffect(name);
+  broadcast({t:'sound', name:name});
+  $('soundboardModal').style.display='none';
 }
 
 async function startMic(){
@@ -257,7 +326,7 @@ async function startMic(){
   audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});
   srcNode=audioCtx.createMediaStreamSource(rawStream);
   gainNode=audioCtx.createGain();
-  analyser=audioCtx.createAnalyser();analyser.fftSize=512;
+  analyser=audioCtx.createAnalyser();analyser.fftSize=256;
   dest=audioCtx.createMediaStreamDestination();
   srcNode.connect(analyser);
   srcNode.connect(gainNode);gainNode.connect(dest);
@@ -272,9 +341,7 @@ async function startMic(){
 function applyGain(){
   if(!gainNode)return;
   let open=!muted&&(!settings.gate||gateOpen);
-  if(settings.ptt){
-    open=!muted && pttPressed;
-  }
+  if(settings.ptt){open=!muted && pttPressed;}
   gainNode.gain.setTargetAtTime(open?settings.gain/100:0,audioCtx.currentTime,0.03);
 }
 
@@ -288,6 +355,33 @@ function tuneSenders(){
 function level(an){
   const d=new Uint8Array(an.fftSize);an.getByteTimeDomainData(d);
   let m=0;for(const v of d){const x=Math.abs(v-128);if(x>m)m=x}return m;
+}
+
+function drawVisualizer(canvas, analyserNode){
+  if(!canvas || !analyserNode) return;
+  const ctx=canvas.getContext('2d');
+  const w=canvas.width, h=canvas.height;
+  const bufferLength=analyserNode.frequencyBinCount;
+  const dataArray=new Uint8Array(bufferLength);
+  analyserNode.getByteTimeDomainData(dataArray);
+
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.fillRect(0,0,w,h);
+  ctx.lineWidth=2;
+  const computedColor=getComputedStyle(document.body).getPropertyValue('--pri').trim()||'#33ff00';
+  ctx.strokeStyle=computedColor;
+  ctx.beginPath();
+
+  const sliceWidth=w/bufferLength;
+  let x=0;
+  for(let i=0; i<bufferLength; i++){
+    const v=dataArray[i]/128.0;
+    const y=v*h/2;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    x+=sliceWidth;
+  }
+  ctx.lineTo(w,h/2);
+  ctx.stroke();
 }
 
 let holdUntil=0;
@@ -307,8 +401,12 @@ setInterval(()=>{
     setSpeaking('me',!muted && pttPressed);
   }
 
+  drawVisualizer($('viz-me'), analyser);
   for(const [id,c] of Object.entries(conns)){
-    if(c.analyser)setSpeaking(id,!c.localMute&&!deafened&&level(c.analyser)>8);
+    if(c.analyser){
+      setSpeaking(id,!c.localMute&&!deafened&&level(c.analyser)>8);
+      drawVisualizer($('viz-'+id), c.analyser);
+    }
   }
 },80);
 
@@ -318,9 +416,9 @@ function renderUsers(){
   const box=$('users');box.innerHTML='';
   const mk=(id,name,me)=>{
     const d=document.createElement('div');d.className='user';d.dataset.id=id;
-    d.innerHTML='<div class="uh"></div><div class="ub"><div class="uname"></div></div>';
-    d.querySelector('.uh').textContent='+-- '+(me?'sen':'kullanıcı')+' --+';
-    d.querySelector('.uname').textContent='> '+name;
+    const pingText=me?'[local]':(conns[id]?.ping!==undefined?`[${conns[id].ping}ms]`:'[...]');
+    d.innerHTML=`<div class="uh"><span>+-- ${me?'sen':name} --+</span><span class="dim">${pingText}</span></div>`+
+                `<div class="ub"><canvas id="viz-${id}" width="200" height="28" class="viz"></canvas><div class="uname">&gt; ${name}</div></div>`;
     if(!me){
       const c=conns[id];
       const ctl=document.createElement('div');ctl.className='vol';
@@ -347,7 +445,7 @@ function addMsg(who,text){
 function broadcast(obj,except){Object.entries(conns).forEach(([id,c])=>{if(id!==except&&c.data&&c.data.open)c.data.send(obj)})}
 
 function setupData(id,data){
-  conns[id]=conns[id]||{vol:100,localMute:false};
+  conns[id]=conns[id]||{vol:100,localMute:false,ping:0};
   conns[id].data=data;
   data.on('open',()=>{data.send({t:'hello',name:myName})});
   data.on('data',m=>onData(id,m));
@@ -368,6 +466,9 @@ function onData(id,m){
     m.ids.forEach(pid=>{if(!conns[pid])connectTo(pid)});
   }else if(m.t==='chat'){
     addMsg(c.name||'?',m.text);
+  }else if(m.t==='sound'){
+    playSoundEffect(m.name);
+    addMsg('soundboard',c.name+' bir efekt çaldı ('+m.name+')');
   }
 }
 
@@ -377,14 +478,14 @@ function connectTo(id){
 }
 
 function setupCall(id,call){
-  conns[id]=conns[id]||{vol:100,localMute:false};
+  conns[id]=conns[id]||{vol:100,localMute:false,ping:0};
   conns[id].call=call;
   call.on('stream',st=>{
     const c=conns[id];if(c.audioEl)return;
     const a=new Audio();a.srcObject=st;a.autoplay=true;a.volume=c.vol/100;a.muted=c.localMute||deafened;
     if(settings.spk&&a.setSinkId)a.setSinkId(settings.spk).catch(()=>{});
     c.audioEl=a;
-    const an=audioCtx.createAnalyser();an.fftSize=512;
+    const an=audioCtx.createAnalyser();an.fftSize=256;
     audioCtx.createMediaStreamSource(st).connect(an);c.analyser=an;
     tuneSenders();
   });
@@ -403,6 +504,22 @@ function dropPeer(id){
   delete conns[id];renderUsers();
 }
 
+setInterval(()=>{
+  for(const [id,c] of Object.entries(conns)){
+    if(c.call && c.call.peerConnection){
+      c.call.peerConnection.getStats().then(stats=>{
+        stats.forEach(report=>{
+          if(report.type==='candidate-pair' && report.state==='succeeded'){
+            if(report.currentRoundTripTime!==undefined){
+              c.ping=Math.round(report.currentRoundTripTime*1000);
+            }
+          }
+        });
+      }).catch(()=>{});
+    }
+  }
+},3000);
+
 function initPeer(id){
   return new Promise((res,rej)=>{
     peer=new Peer(id,{config:ICE});
@@ -414,13 +531,10 @@ function initPeer(id){
 function enterRoom(){
   $('lobby').style.display='none';$('app').style.display='grid';
   $('codeTxt').textContent='ODA KODU: '+roomCode;
-  
-  // PTT butonunu ayarla
   if(settings.ptt){
     $('pttBtn').style.display='';
     $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
   }
-
   peer.on('connection',data=>setupData(data.peer,data));
   peer.on('call',call=>{call.answer(outStream);setupCall(call.peer,call)});
   peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
@@ -441,19 +555,12 @@ $('createBtn').onclick=async()=>{
 $('joinBtn').onclick=async()=>{
   myName=($('nameIn').value||'').trim();
   let rawCode=($('codeIn').value||'').trim().toLowerCase();
-  
-  // Eğer kullanıcı tam bir link yapıştırdıysa oda kodunu ayıkla
   if(rawCode.includes('?oda=')){
-    try{
-      const urlObj=new URL(rawCode);
-      rawCode=urlObj.searchParams.get('oda')||rawCode;
-    }catch(e){
-      const parts=rawCode.split('?oda=');
-      if(parts.length>1)rawCode=parts[1].split('&')[0];
+    try{const urlObj=new URL(rawCode);rawCode=urlObj.searchParams.get('oda')||rawCode;}catch(e){
+      const parts=rawCode.split('?oda=');if(parts.length>1)rawCode=parts[1].split('&')[0];
     }
   }
   roomCode=rawCode.replace(PREFIX,'');
-
   if(!myName)return msg('önce adını yaz.');if(!roomCode)return msg('oda kodunu yaz.');
   saveSettings();
   try{
@@ -463,7 +570,7 @@ $('joinBtn').onclick=async()=>{
     const hostId=PREFIX+roomCode;
     const data=peer.connect(hostId,{reliable:true});setupData(hostId,data);
     const call=peer.call(hostId,outStream);setupCall(hostId,call);
-    setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odata bağlanılamadı. Kodu kontrol et.');location.reload()}},12000);
+    setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odaya bağlanılamadı. Kodu kontrol et.');location.reload()}},12000);
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
 
@@ -480,54 +587,27 @@ $('deafBtn').onclick=()=>{
   $('deafBtn').classList.toggle('red',deafened);
 };
 
-// PTT Klavye ve Buton Dinleyicileri
+$('sbOpenBtn').onclick=()=>{$('soundboardModal').style.display='flex'};
+$('sbCloseBtn').onclick=()=>{$('soundboardModal').style.display='none'};
+
 let capturingKey=false;
-$('pttKeyBtn').onclick=()=>{
-  capturingKey=true;
-  $('pttKeyBtn').textContent='tuşa bas...';
-};
-
+$('pttKeyBtn').onclick=()=>{capturingKey=true;$('pttKeyBtn').textContent='tuşa bas...'};
 window.addEventListener('keydown',e=>{
-  if(capturingKey){
-    e.preventDefault();
-    settings.pttKey=e.code;
-    $('pttKeyBtn').textContent=e.code.toUpperCase();
-    capturingKey=false;
-    return;
-  }
+  if(capturingKey){e.preventDefault();settings.pttKey=e.code;$('pttKeyBtn').textContent=e.code.toUpperCase();capturingKey=false;return;}
   if(settings.ptt && !muted && e.code===settings.pttKey && !e.repeat){
-    if(document.activeElement.tagName==='INPUT')return; // Sohbette yazarken tetiklenmesin
-    pttPressed=true;
-    applyGain();
-    $('pttBtn').classList.add('on');
+    if(document.activeElement.tagName==='INPUT')return;
+    pttPressed=true;applyGain();$('pttBtn').classList.add('on');
   }
 });
-
 window.addEventListener('keyup',e=>{
-  if(settings.ptt && e.code===settings.pttKey){
-    pttPressed=false;
-    applyGain();
-    $('pttBtn').classList.remove('on');
-  }
+  if(settings.ptt && e.code===settings.pttKey){pttPressed=false;applyGain();$('pttBtn').classList.remove('on');}
 });
 
-// Ayrılma onayı
 let leaveTimer=null,leaveArmed=false;
-function disarmLeave(){
-  leaveArmed=false;clearTimeout(leaveTimer);
-  $('leaveBtn').textContent='ayrıl';
-  $('cancelLeave').style.display='none';
-}
+function disarmLeave(){leaveArmed=false;clearTimeout(leaveTimer);$('leaveBtn').textContent='ayrıl';$('cancelLeave').style.display='none'}
 $('leaveBtn').onclick=()=>{
-  if(!leaveArmed){
-    leaveArmed=true;
-    $('leaveBtn').textContent='emin misin? evet';
-    $('cancelLeave').style.display='';
-    leaveTimer=setTimeout(disarmLeave,6000);
-    return;
-  }
-  try{peer.destroy()}catch(e){}
-  location.reload();
+  if(!leaveArmed){leaveArmed=true;$('leaveBtn').textContent='emin misin? evet';$('cancelLeave').style.display='';leaveTimer=setTimeout(disarmLeave,6000);return;}
+  try{peer.destroy()}catch(e){}location.reload();
 };
 $('cancelLeave').onclick=disarmLeave;
 
@@ -539,12 +619,7 @@ setInterval(keepAudioAlive,1500);
 document.addEventListener('visibilitychange',keepAudioAlive);
 window.addEventListener('focus',keepAudioAlive);
 
-$('copyBtn').onclick=()=>{
-  navigator.clipboard.writeText(roomCode);
-  $('copyBtn').textContent='kopyalandı';
-  setTimeout(()=>$('copyBtn').textContent='kopyala',1500);
-};
-
+$('copyBtn').onclick=()=>{navigator.clipboard.writeText(roomCode);$('copyBtn').textContent='kopyalandı';setTimeout(()=>$('copyBtn').textContent='kopyala',1500)};
 $('copyLinkBtn').onclick=()=>{
   const fullLink=window.location.origin + window.location.pathname + '?oda=' + roomCode;
   navigator.clipboard.writeText(fullLink);
@@ -558,14 +633,10 @@ $('chatForm').onsubmit=e=>{
 };
 
 $('setBtn').onclick=async()=>{
-  $('nsChk').checked=settings.ns;
-  $('ecChk').checked=settings.ec;
-  $('agcChk').checked=settings.agc;
-  $('gateChk').checked=settings.gate;
-  $('pttChk').checked=settings.ptt;
-  $('beepChk').checked=settings.beep;
-  $('gateRange').value=settings.thr;
-  $('gainRange').value=settings.gain;
+  $('themeSel').value=settings.theme;
+  $('nsChk').checked=settings.ns;$('ecChk').checked=settings.ec;$('agcChk').checked=settings.agc;
+  $('gateChk').checked=settings.gate;$('pttChk').checked=settings.ptt;$('beepChk').checked=settings.beep;
+  $('gateRange').value=settings.thr;$('gainRange').value=settings.gain;
   $('pttKeyBtn').textContent=settings.pttKey.toUpperCase();
   $('pttKeyBox').style.display=settings.ptt?'flex':'none';
 
@@ -576,37 +647,28 @@ $('setBtn').onclick=async()=>{
   $('settings').style.display='flex';
 };
 
-$('pttChk').onchange=()=>{
-  $('pttKeyBox').style.display=$('pttChk').checked?'flex':'none';
-};
-
+$('pttChk').onchange=()=>{$('pttKeyBox').style.display=$('pttChk').checked?'flex':'none'};
 $('gateRange').oninput=()=>{settings.thr=+$('gateRange').value};
 $('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
 $('gateChk').onchange=()=>{settings.gate=$('gateChk').checked;applyGain()};
 
 $('applyBtn').onclick=async()=>{
   const old=JSON.stringify([settings.ns,settings.ec,settings.agc,settings.mic]);
-  settings.ns=$('nsChk').checked;
-  settings.ec=$('ecChk').checked;
-  settings.agc=$('agcChk').checked;
-  settings.gate=$('gateChk').checked;
-  settings.ptt=$('pttChk').checked;
-  settings.beep=$('beepChk').checked;
-  settings.mic=$('micSel').value;
-  settings.spk=$('spkSel').value;
+  settings.theme=$('themeSel').value;
+  settings.ns=$('nsChk').checked;settings.ec=$('ecChk').checked;settings.agc=$('agcChk').checked;
+  settings.gate=$('gateChk').checked;settings.ptt=$('pttChk').checked;settings.beep=$('beepChk').checked;
+  settings.mic=$('micSel').value;settings.spk=$('spkSel').value;
 
+  document.body.className=settings.theme;
   saveSettings();
 
   if(old!==JSON.stringify([settings.ns,settings.ec,settings.agc,settings.mic])){try{await startMic()}catch(e){alert('Mikrofon açılamadı: '+e.message)}}
   Object.values(conns).forEach(c=>{if(c.audioEl&&c.audioEl.setSinkId&&settings.spk)c.audioEl.setSinkId(settings.spk).catch(()=>{})});
-  
   if(roomCode){
     $('pttBtn').style.display=settings.ptt?'':'none';
     $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
   }
-
-  applyGain();
-  $('settings').style.display='none';
+  applyGain();$('settings').style.display='none';
 };
 </script>
 </body>
