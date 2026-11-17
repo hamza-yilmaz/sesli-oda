@@ -78,19 +78,19 @@ select:focus{border-color:var(--pri)}
     <div class="dim">================================</div>
     <label class="pr"><span>user@oda:~$ ad</span><input type="text" id="nameIn" placeholder="adını yaz" maxlength="20" autocomplete="off"></label>
     <div class="tabs">
-      <button class="btn on" id="tabCreate">oda kur</button>
-      <button class="btn" id="tabJoin">odaya katıl</button>
+      <button class="btn on" id="tabCreate">Yeni oda</button>
+      <button class="btn" id="tabJoin">Mevcut oda</button>
     </div>
     <div class="pane show" id="paneCreate">
       <div class="amb">&gt; --yeni-oda</div>
       <div class="dim">6 haneli bir oda kodu üretilir. Kodu arkadaşlarına gönder, onlar "odaya katıl" sekmesinden girsin.</div>
-      <div><button class="btn" id="createBtn">oda kur</button></div>
+      <div><button class="btn" id="createBtn">Kur</button></div>
     </div>
     <div class="pane" id="paneJoin">
       <div class="amb">&gt; --var-olan-odaya-gir</div>
       <div class="dim">Arkadaşının gönderdiği oda kodunu yaz veya linke tıkla.</div>
       <label class="pr"><span>kod@oda:~$</span><input type="text" id="codeIn" placeholder="oda kodu" maxlength="30" autocomplete="off" autocapitalize="off"></label>
-      <div><button class="btn" id="joinBtn">odaya katıl</button></div>
+      <div><button class="btn" id="joinBtn">Katıl</button></div>
     </div>
     <div id="lobbyMsg" class="amb"></div>
     <div class="dim">// sunucu yok, hesap yok. oda kapanınca her şey silinir.</div>
