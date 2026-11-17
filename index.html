@@ -19,6 +19,14 @@ input[type=text]:focus{border-color:var(--accent)}
 .card h1{font-size:22px}
 .muted{color:var(--muted);font-size:13px}
 .row{display:flex;gap:8px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:#1a1b1e;border-radius:10px;padding:4px;gap:4px}
+.tabs button{background:transparent;color:var(--muted);padding:10px 8px;font-weight:600}
+.tabs button.active{background:var(--accent);color:#fff}
+.tabs button:hover{filter:none;color:#fff}
+.pane{display:none;flex-direction:column;gap:12px}
+.pane.show{display:flex}
+.pane h2{font-size:16px}
+#codeIn{font-family:monospace;font-size:20px;letter-spacing:3px;text-align:center;text-transform:lowercase}
 #app{display:none;width:100vw;height:100vh;grid-template-columns:1fr 340px}
 #left{display:flex;flex-direction:column;padding:18px;gap:14px;min-width:0}
 #top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
@@ -50,11 +58,25 @@ select{font:inherit;width:100%;padding:10px;border-radius:8px;background:#1a1b1e
   <h1>🎙️ Sesli Oda</h1>
   <p class="muted">Sunucu yok, hesap yok. Oda kapanınca her şey silinir.</p>
   <input type="text" id="nameIn" placeholder="Adın" maxlength="20">
-  <button id="createBtn">Yeni oda aç</button>
-  <div class="row">
-    <input type="text" id="codeIn" placeholder="Oda kodu">
-    <button id="joinBtn" class="gray">Katıl</button>
+
+  <div class="tabs">
+    <button id="tabCreate" class="active">Oda kur</button>
+    <button id="tabJoin">Odaya katıl</button>
   </div>
+
+  <div class="pane show" id="paneCreate">
+    <h2>Yeni bir oda aç</h2>
+    <p class="muted">Sana altı haneli bir oda kodu verilecek. Bu kodu arkadaşlarına gönder, onlar "Odaya katıl" sekmesinden girsin.</p>
+    <button id="createBtn">Oda kur</button>
+  </div>
+
+  <div class="pane" id="paneJoin">
+    <h2>Var olan bir odaya katıl</h2>
+    <p class="muted">Arkadaşının sana gönderdiği oda kodunu yaz.</p>
+    <input type="text" id="codeIn" placeholder="oda kodu" maxlength="12" autocomplete="off" autocapitalize="off">
+    <button id="joinBtn">Odaya katıl</button>
+  </div>
+
   <p class="muted" id="lobbyMsg"></p>
 </div>
 
@@ -108,6 +130,20 @@ let settings={ns:true,ec:true,agc:true,gate:true,thr:8,gain:100,mic:'',spk:''};
 
 function genCode(){const c='abcdefghjkmnpqrstuvwxyz23456789';let s='';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s}
 function msg(t){$('lobbyMsg').textContent=t}
+
+// Giris ekrani sekmeleri
+function showTab(which){
+  const create=which==='create';
+  $('tabCreate').classList.toggle('active',create);
+  $('tabJoin').classList.toggle('active',!create);
+  $('paneCreate').classList.toggle('show',create);
+  $('paneJoin').classList.toggle('show',!create);
+  msg('');
+  if(!create)setTimeout(()=>$('codeIn').focus(),0);
+}
+$('tabCreate').onclick=()=>showTab('create');
+$('tabJoin').onclick=()=>showTab('join');
+$('codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('joinBtn').click()});
 
 async function startMic(){
   if(rawStream)rawStream.getTracks().forEach(t=>t.stop());
@@ -203,7 +239,7 @@ function onData(id,m){
   const c=conns[id];
   if(m.t==='hello'){
     c.name=m.name;renderUsers();
-    if(isHost){ // yeni gelene diğerlerini tanıt
+    if(isHost){ // yeni gelene digerlerini tanit
       const others=Object.keys(conns).filter(x=>x!==id&&conns[x].name);
       c.data.send({t:'peers',ids:others});
     }
