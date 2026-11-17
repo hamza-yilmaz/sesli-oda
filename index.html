@@ -73,7 +73,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.3.1</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.3.2</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -456,7 +456,7 @@ function addMsg(who,text){
 function broadcast(obj,except){Object.entries(conns).forEach(([id,c])=>{if(id!==except&&c.data&&c.data.open)c.data.send(obj)})}
 
 function setupData(id,data){
-  conns[id]=conns[id]||{vol:100,localMute:false,ping:0,lastSeen:Date.now()};
+  conns[id]=conns[id]||{vol:100,localMute:false,ping:undefined,lastSeen:Date.now()};
   conns[id].data=data;
   data.on('open',()=>{
     data.send({t:'hello',name:myName});
@@ -489,7 +489,14 @@ function onData(id,m){
     playSoundEffect(m.name);
     addMsg('soundboard',c.name+' bir efekt çaldı ('+m.name+')');
   }else if(m.t==='ping'){
-    c.data.send({t:'pong'});
+    // Karşıdan ping geldiğinde hemen pong (yanıt) gönder
+    if(c.data && c.data.open) c.data.send({t:'pong', ts:m.ts});
+  }else if(m.t==='pong'){
+    // Pong geldiğinde gecikmeyi hesapla
+    if(c.pingStartTime){
+      c.ping = Date.now() - c.pingStartTime;
+      renderUsers();
+    }
   }
 }
 
@@ -500,7 +507,7 @@ function connectTo(id){
 }
 
 function setupCall(id,call){
-  conns[id]=conns[id]||{vol:100,localMute:false,ping:0,lastSeen:Date.now()};
+  conns[id]=conns[id]||{vol:100,localMute:false,ping:undefined,lastSeen:Date.now()};
   conns[id].call=call;
   call.on('stream',st=>{
     const c=conns[id];if(c.audioEl)return;
@@ -514,11 +521,8 @@ function setupCall(id,call){
   call.on('close',()=>dropPeer(id));
 }
 
-// Mükerrer bildirim ve silmeyi önleyen güvenli çıkış fonksiyonu
 function dropPeer(id){
   const c=conns[id];if(!c)return;
-  
-  // Eğer kullanıcı zaten isme sahipse ve daha önce düşürülmediyse bildirim çal
   const wasInRoom = !!c.name;
 
   if(c.audioEl){c.audioEl.srcObject=null}
@@ -536,6 +540,7 @@ function dropPeer(id){
   renderUsers();
 }
 
+// Veri kanalı üzerinden gerçek Ping/Pong döngüsü ve Zombi bağlantı kontrolü
 setInterval(()=>{
   const now=Date.now();
   for(const [id,c] of Object.entries(conns)){
@@ -543,16 +548,9 @@ setInterval(()=>{
       dropPeer(id);
       continue;
     }
-    if(c.call && c.call.peerConnection){
-      c.call.peerConnection.getStats().then(stats=>{
-        stats.forEach(report=>{
-          if(report.type==='candidate-pair' && report.state==='succeeded'){
-            if(report.currentRoundTripTime!==undefined){
-              c.ping=Math.round(report.currentRoundTripTime*1000);
-            }
-          }
-        });
-      }).catch(()=>{});
+    if(c.data && c.data.open){
+      c.pingStartTime=now;
+      c.data.send({t:'ping', ts:now});
     }
   }
 },3000);
