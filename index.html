@@ -109,6 +109,7 @@ select:focus{border-color:var(--pri)}
       <button class="btn" id="deafBtn">ses: açık</button>
       <button class="btn" id="setBtn">ses ayarları</button>
       <button class="btn red" id="leaveBtn">ayrıl</button>
+      <button class="btn" id="cancelLeave" style="display:none">hayır</button>
     </div>
   </div>
   <div class="win" id="right">
@@ -352,7 +353,34 @@ $('deafBtn').onclick=()=>{
   $('deafBtn').textContent=deafened?'ses: kapalı':'ses: açık';
   $('deafBtn').classList.toggle('red',deafened);
 };
-$('leaveBtn').onclick=()=>{if(confirm('Odadan ayrılmak istiyor musun?')){try{peer.destroy()}catch(e){}location.reload()}};
+// ayrılma onayı sayfa içinde (tarayıcı confirm penceresi sesi donduruyordu)
+let leaveTimer=null,leaveArmed=false;
+function disarmLeave(){
+  leaveArmed=false;clearTimeout(leaveTimer);
+  $('leaveBtn').textContent='ayrıl';
+  $('cancelLeave').style.display='none';
+}
+$('leaveBtn').onclick=()=>{
+  if(!leaveArmed){
+    leaveArmed=true;
+    $('leaveBtn').textContent='emin misin? evet';
+    $('cancelLeave').style.display='';
+    leaveTimer=setTimeout(disarmLeave,6000);
+    return;
+  }
+  try{peer.destroy()}catch(e){}
+  location.reload();
+};
+$('cancelLeave').onclick=disarmLeave;
+
+// ses bağlamı ve gelen sesler takılırsa geri aç
+function keepAudioAlive(){
+  if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});
+  Object.values(conns).forEach(c=>{if(c.audioEl&&c.audioEl.paused)c.audioEl.play().catch(()=>{})});
+}
+setInterval(keepAudioAlive,1500);
+document.addEventListener('visibilitychange',keepAudioAlive);
+window.addEventListener('focus',keepAudioAlive);
 $('copyBtn').onclick=()=>{navigator.clipboard.writeText(roomCode);$('copyBtn').textContent='kopyalandı';setTimeout(()=>$('copyBtn').textContent='kopyala',1500)};
 $('chatForm').onsubmit=e=>{
   e.preventDefault();const t=$('chatIn').value.trim();if(!t)return;
