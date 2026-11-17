@@ -69,7 +69,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.0</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.1</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -88,8 +88,8 @@ select:focus{border-color:var(--pri)}
     </div>
     <div class="pane" id="paneJoin">
       <div class="amb">&gt; --var-olan-odaya-gir</div>
-      <div class="dim">Arkadaşının gönderdiği oda kodunu yaz.</div>
-      <label class="pr"><span>kod@oda:~$</span><input type="text" id="codeIn" placeholder="oda kodu" maxlength="12" autocomplete="off" autocapitalize="off"></label>
+      <div class="dim">Arkadaşının gönderdiği oda kodunu yaz veya linke tıkla.</div>
+      <label class="pr"><span>kod@oda:~$</span><input type="text" id="codeIn" placeholder="oda kodu" maxlength="30" autocomplete="off" autocapitalize="off"></label>
       <div><button class="btn" id="joinBtn">odaya katıl</button></div>
     </div>
     <div id="lobbyMsg" class="amb"></div>
@@ -100,13 +100,14 @@ select:focus{border-color:var(--pri)}
 <div id="app">
   <div id="left">
     <div id="top">
-      <div><span id="codeTxt"></span> <button class="btn sm" id="copyBtn">kopyala</button></div>
+      <div><span id="codeTxt"></span> <button class="btn sm" id="copyBtn">kopyala</button> <button class="btn sm" id="copyLinkBtn">link kopyala</button></div>
       <span class="dim" id="status"></span>
     </div>
     <div id="users"></div>
     <div id="bar">
       <button class="btn" id="muteBtn">mikrofon: açık</button>
       <button class="btn" id="deafBtn">ses: açık</button>
+      <button class="btn" id="pttBtn" style="display:none">PTT: kapalı</button>
       <button class="btn" id="setBtn">ses ayarları</button>
       <button class="btn red" id="leaveBtn">ayrıl</button>
       <button class="btn" id="cancelLeave" style="display:none">hayır</button>
@@ -127,6 +128,11 @@ select:focus{border-color:var(--pri)}
       <label class="chk"><input type="checkbox" id="ecChk" checked> yankı engelleme</label>
       <label class="chk"><input type="checkbox" id="agcChk" checked> otomatik ses seviyesi</label>
       <label class="chk"><input type="checkbox" id="gateChk" checked> stüdyo modu (sessizken kapı kapanır)</label>
+      <label class="chk"><input type="checkbox" id="pttChk"> push-to-talk (bas-konuş)</label>
+      <div id="pttKeyBox" style="display:none;align-items:center;gap:8px;">
+        <span class="dim">tuş:</span> <button class="btn" id="pttKeyBtn">SPACE</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="beepChk" checked> giriş/çıkış sesli uyarıları (bip)</label>
       <div><div class="dim">kapı eşiği</div><input type="range" id="gateRange" min="1" max="40" value="8" style="width:100%"></div>
       <div><div class="dim">mikrofon seviyesi</div><input type="range" id="gainRange" min="0" max="200" value="100" style="width:100%"></div>
       <div><div class="dim">mikrofon</div><select id="micSel"></select></div>
@@ -144,14 +150,55 @@ const PREFIX='sesliodayilmaz-';
 
 let peer,myName,roomCode,isHost=false;
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
-let muted=false,deafened=false,gateOpen=true;
+let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
 let conns={};
-let settings={ns:true,ec:true,agc:true,gate:true,thr:8,gain:100,mic:'',spk:''};
+
+// Kaydedilmiş ayarları yükle
+let savedData={};
+try{savedData=JSON.parse(localStorage.getItem('sesli_oda_cfg')||'{}')}catch(e){}
+
+let settings={
+  ns:savedData.ns??true,
+  ec:savedData.ec??true,
+  agc:savedData.agc??true,
+  gate:savedData.gate??true,
+  thr:savedData.thr??8,
+  gain:savedData.gain??100,
+  mic:savedData.mic??'',
+  spk:savedData.spk??'',
+  ptt:savedData.ptt??false,
+  pttKey:savedData.pttKey??'Space',
+  beep:savedData.beep??true
+};
+
+// Adı localStorage'dan doldur
+if(savedData.name)$('nameIn').value=savedData.name;
+
+// URL üzerinden oda kodu kontrolü (örn: ?oda=xyz veya direkt girilmişse)
+window.addEventListener('DOMContentLoaded',()=>{
+  const params=new URLSearchParams(window.location.search);
+  const codeParam=params.get('oda')||params.get('room');
+  if(codeParam){
+    $('codeIn').value=codeParam.trim().replace(PREFIX,'');
+    showTab('join');
+  }
+});
+
+function saveSettings(){
+  try{
+    localStorage.setItem('sesli_oda_cfg',JSON.stringify({
+      name:($('nameIn').value||'').trim(),
+      ns:settings.ns,ec:settings.ec,agc:settings.agc,gate:settings.gate,
+      thr:settings.thr,gain:settings.gain,mic:settings.mic,spk:settings.spk,
+      ptt:settings.ptt,pttKey:settings.pttKey,beep:settings.beep
+    }));
+  }catch(e){}
+}
 
 function genCode(){const c='abcdefghjkmnpqrstuvwxyz23456789';let s='';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s}
 function msg(t,ok){$('lobbyMsg').textContent=t?((ok?'[OK] ':'[ERR] ')+t):''}
 
-// yazı makinesi efekti
+// Yazı makinesi efekti
 (function(){
   const t='> sunucusuz sesli oda başlatılıyor...';const el=$('tw');
   if(matchMedia('(prefers-reduced-motion:reduce)').matches){el.textContent=t;return}
@@ -170,6 +217,36 @@ function showTab(which){
 $('tabCreate').onclick=()=>showTab('create');
 $('tabJoin').onclick=()=>showTab('join');
 $('codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('joinBtn').click()});
+
+// Bip sesi üretici (Tarayıcının kendi ses üreteci, dosya gerektirmez)
+function playBeep(type){
+  if(!settings.beep || !audioCtx) return;
+  try{
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    if(type==='in'){
+      // Giriş: Neşeli iki ton (C5 -> G5)
+      osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.25);
+    } else {
+      // Çıkış: Düşen ton (G5 -> C5)
+      osc.frequency.setValueAtTime(783.99, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(523.25, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.25);
+    }
+  }catch(e){}
+}
 
 async function startMic(){
   if(rawStream)rawStream.getTracks().forEach(t=>t.stop());
@@ -191,36 +268,50 @@ async function startMic(){
     if(s)s.replaceTrack(outStream.getAudioTracks()[0]);}});
   tuneSenders();
 }
+
 function applyGain(){
   if(!gainNode)return;
-  const open=!muted&&(!settings.gate||gateOpen);
+  let open=!muted&&(!settings.gate||gateOpen);
+  if(settings.ptt){
+    open=!muted && pttPressed;
+  }
   gainNode.gain.setTargetAtTime(open?settings.gain/100:0,audioCtx.currentTime,0.03);
 }
+
 function tuneSenders(){
   Object.values(conns).forEach(c=>{if(c.call&&c.call.peerConnection){
     c.call.peerConnection.getSenders().forEach(s=>{if(s.track&&s.track.kind==='audio'){
       const p=s.getParameters();if(!p.encodings||!p.encodings.length)p.encodings=[{}];
       p.encodings[0].maxBitrate=96000;s.setParameters(p).catch(()=>{});}});}});
 }
+
 function level(an){
   const d=new Uint8Array(an.fftSize);an.getByteTimeDomainData(d);
   let m=0;for(const v of d){const x=Math.abs(v-128);if(x>m)m=x}return m;
 }
+
 let holdUntil=0;
 setInterval(()=>{
   if(!analyser)return;
   const l=level(analyser);
   const n=Math.min(20,Math.round(l*2.2/5));
   $('meter').textContent='['+'|'.repeat(n)+'.'.repeat(20-n)+']';
-  const now=performance.now();
-  if(l>settings.thr){holdUntil=now+250}
-  const g=now<holdUntil;
-  if(g!==gateOpen){gateOpen=g;applyGain()}
-  setSpeaking('me',!muted&&(settings.gate?gateOpen:l>6));
+  
+  if(!settings.ptt){
+    const now=performance.now();
+    if(l>settings.thr){holdUntil=now+250}
+    const g=now<holdUntil;
+    if(g!==gateOpen){gateOpen=g;applyGain()}
+    setSpeaking('me',!muted&&(settings.gate?gateOpen:l>6));
+  } else {
+    setSpeaking('me',!muted && pttPressed);
+  }
+
   for(const [id,c] of Object.entries(conns)){
     if(c.analyser)setSpeaking(id,!c.localMute&&!deafened&&level(c.analyser)>8);
   }
 },80);
+
 function setSpeaking(id,on){const e=document.querySelector('[data-id="'+id+'"]');if(e)e.classList.toggle('speaking',on)}
 
 function renderUsers(){
@@ -262,10 +353,13 @@ function setupData(id,data){
   data.on('data',m=>onData(id,m));
   data.on('close',()=>dropPeer(id));
 }
+
 function onData(id,m){
   const c=conns[id];
   if(m.t==='hello'){
     c.name=m.name;renderUsers();
+    playBeep('in');
+    addMsg('sistem',m.name+' odaya katıldı');
     if(isHost){
       const others=Object.keys(conns).filter(x=>x!==id&&conns[x].name);
       c.data.send({t:'peers',ids:others});
@@ -276,10 +370,12 @@ function onData(id,m){
     addMsg(c.name||'?',m.text);
   }
 }
+
 function connectTo(id){
   const data=peer.connect(id,{reliable:true});setupData(id,data);
   if(outStream){const call=peer.call(id,outStream);setupCall(id,call)}
 }
+
 function setupCall(id,call){
   conns[id]=conns[id]||{vol:100,localMute:false};
   conns[id].call=call;
@@ -294,12 +390,16 @@ function setupCall(id,call){
   });
   call.on('close',()=>dropPeer(id));
 }
+
 function dropPeer(id){
   const c=conns[id];if(!c)return;
   if(c.audioEl){c.audioEl.srcObject=null}
   try{c.call&&c.call.close()}catch(e){}
   try{c.data&&c.data.close()}catch(e){}
-  if(c.name)addMsg('sistem',c.name+' ayrıldı');
+  if(c.name){
+    playBeep('out');
+    addMsg('sistem',c.name+' ayrıldı');
+  }
   delete conns[id];renderUsers();
 }
 
@@ -310,9 +410,17 @@ function initPeer(id){
     peer.on('error',e=>rej(e));
   });
 }
+
 function enterRoom(){
   $('lobby').style.display='none';$('app').style.display='grid';
   $('codeTxt').textContent='ODA KODU: '+roomCode;
+  
+  // PTT butonunu ayarla
+  if(settings.ptt){
+    $('pttBtn').style.display='';
+    $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
+  }
+
   peer.on('connection',data=>setupData(data.peer,data));
   peer.on('call',call=>{call.answer(outStream);setupCall(call.peer,call)});
   peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
@@ -320,7 +428,8 @@ function enterRoom(){
 }
 
 $('createBtn').onclick=async()=>{
-  myName=$('nameIn').value.trim();if(!myName)return msg('önce adını yaz.');
+  myName=($('nameIn').value||'').trim();if(!myName)return msg('önce adını yaz.');
+  saveSettings();
   try{
     msg('mikrofon açılıyor...',true);await startMic();
     roomCode=genCode();isHost=true;
@@ -328,9 +437,25 @@ $('createBtn').onclick=async()=>{
     enterRoom();
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
+
 $('joinBtn').onclick=async()=>{
-  myName=$('nameIn').value.trim();roomCode=$('codeIn').value.trim().toLowerCase();
+  myName=($('nameIn').value||'').trim();
+  let rawCode=($('codeIn').value||'').trim().toLowerCase();
+  
+  // Eğer kullanıcı tam bir link yapıştırdıysa oda kodunu ayıkla
+  if(rawCode.includes('?oda=')){
+    try{
+      const urlObj=new URL(rawCode);
+      rawCode=urlObj.searchParams.get('oda')||rawCode;
+    }catch(e){
+      const parts=rawCode.split('?oda=');
+      if(parts.length>1)rawCode=parts[1].split('&')[0];
+    }
+  }
+  roomCode=rawCode.replace(PREFIX,'');
+
   if(!myName)return msg('önce adını yaz.');if(!roomCode)return msg('oda kodunu yaz.');
+  saveSettings();
   try{
     msg('mikrofon açılıyor...',true);await startMic();
     await initPeer();
@@ -338,7 +463,7 @@ $('joinBtn').onclick=async()=>{
     const hostId=PREFIX+roomCode;
     const data=peer.connect(hostId,{reliable:true});setupData(hostId,data);
     const call=peer.call(hostId,outStream);setupCall(hostId,call);
-    setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odaya bağlanılamadı. Kodu kontrol et.');location.reload()}},12000);
+    setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odata bağlanılamadı. Kodu kontrol et.');location.reload()}},12000);
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
 
@@ -347,13 +472,46 @@ $('muteBtn').onclick=()=>{
   $('muteBtn').textContent=muted?'mikrofon: kapalı':'mikrofon: açık';
   $('muteBtn').classList.toggle('red',muted);
 };
+
 $('deafBtn').onclick=()=>{
   deafened=!deafened;
   Object.values(conns).forEach(c=>{if(c.audioEl)c.audioEl.muted=deafened||c.localMute});
   $('deafBtn').textContent=deafened?'ses: kapalı':'ses: açık';
   $('deafBtn').classList.toggle('red',deafened);
 };
-// ayrılma onayı sayfa içinde (tarayıcı confirm penceresi sesi donduruyordu)
+
+// PTT Klavye ve Buton Dinleyicileri
+let capturingKey=false;
+$('pttKeyBtn').onclick=()=>{
+  capturingKey=true;
+  $('pttKeyBtn').textContent='tuşa bas...';
+};
+
+window.addEventListener('keydown',e=>{
+  if(capturingKey){
+    e.preventDefault();
+    settings.pttKey=e.code;
+    $('pttKeyBtn').textContent=e.code.toUpperCase();
+    capturingKey=false;
+    return;
+  }
+  if(settings.ptt && !muted && e.code===settings.pttKey && !e.repeat){
+    if(document.activeElement.tagName==='INPUT')return; // Sohbette yazarken tetiklenmesin
+    pttPressed=true;
+    applyGain();
+    $('pttBtn').classList.add('on');
+  }
+});
+
+window.addEventListener('keyup',e=>{
+  if(settings.ptt && e.code===settings.pttKey){
+    pttPressed=false;
+    applyGain();
+    $('pttBtn').classList.remove('on');
+  }
+});
+
+// Ayrılma onayı
 let leaveTimer=null,leaveArmed=false;
 function disarmLeave(){
   leaveArmed=false;clearTimeout(leaveTimer);
@@ -373,7 +531,6 @@ $('leaveBtn').onclick=()=>{
 };
 $('cancelLeave').onclick=disarmLeave;
 
-// ses bağlamı ve gelen sesler takılırsa geri aç
 function keepAudioAlive(){
   if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});
   Object.values(conns).forEach(c=>{if(c.audioEl&&c.audioEl.paused)c.audioEl.play().catch(()=>{})});
@@ -381,31 +538,75 @@ function keepAudioAlive(){
 setInterval(keepAudioAlive,1500);
 document.addEventListener('visibilitychange',keepAudioAlive);
 window.addEventListener('focus',keepAudioAlive);
-$('copyBtn').onclick=()=>{navigator.clipboard.writeText(roomCode);$('copyBtn').textContent='kopyalandı';setTimeout(()=>$('copyBtn').textContent='kopyala',1500)};
+
+$('copyBtn').onclick=()=>{
+  navigator.clipboard.writeText(roomCode);
+  $('copyBtn').textContent='kopyalandı';
+  setTimeout(()=>$('copyBtn').textContent='kopyala',1500);
+};
+
+$('copyLinkBtn').onclick=()=>{
+  const fullLink=window.location.origin + window.location.pathname + '?oda=' + roomCode;
+  navigator.clipboard.writeText(fullLink);
+  $('copyLinkBtn').textContent='link kopyalandı';
+  setTimeout(()=>$('copyLinkBtn').textContent='link kopyala',1500);
+};
+
 $('chatForm').onsubmit=e=>{
   e.preventDefault();const t=$('chatIn').value.trim();if(!t)return;
   addMsg(myName+' (sen)',t);broadcast({t:'chat',text:t});$('chatIn').value='';
 };
 
 $('setBtn').onclick=async()=>{
-  $('nsChk').checked=settings.ns;$('ecChk').checked=settings.ec;$('agcChk').checked=settings.agc;
-  $('gateChk').checked=settings.gate;$('gateRange').value=settings.thr;$('gainRange').value=settings.gain;
+  $('nsChk').checked=settings.ns;
+  $('ecChk').checked=settings.ec;
+  $('agcChk').checked=settings.agc;
+  $('gateChk').checked=settings.gate;
+  $('pttChk').checked=settings.ptt;
+  $('beepChk').checked=settings.beep;
+  $('gateRange').value=settings.thr;
+  $('gainRange').value=settings.gain;
+  $('pttKeyBtn').textContent=settings.pttKey.toUpperCase();
+  $('pttKeyBox').style.display=settings.ptt?'flex':'none';
+
   const devs=await navigator.mediaDevices.enumerateDevices();
   const fill=(sel,kind,cur)=>{sel.innerHTML='<option value="">varsayılan</option>';
     devs.filter(d=>d.kind===kind).forEach(d=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||kind;if(d.deviceId===cur)o.selected=true;sel.append(o)})};
   fill($('micSel'),'audioinput',settings.mic);fill($('spkSel'),'audiooutput',settings.spk);
   $('settings').style.display='flex';
 };
+
+$('pttChk').onchange=()=>{
+  $('pttKeyBox').style.display=$('pttChk').checked?'flex':'none';
+};
+
 $('gateRange').oninput=()=>{settings.thr=+$('gateRange').value};
 $('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
 $('gateChk').onchange=()=>{settings.gate=$('gateChk').checked;applyGain()};
+
 $('applyBtn').onclick=async()=>{
   const old=JSON.stringify([settings.ns,settings.ec,settings.agc,settings.mic]);
-  settings.ns=$('nsChk').checked;settings.ec=$('ecChk').checked;settings.agc=$('agcChk').checked;
-  settings.gate=$('gateChk').checked;settings.mic=$('micSel').value;settings.spk=$('spkSel').value;
+  settings.ns=$('nsChk').checked;
+  settings.ec=$('ecChk').checked;
+  settings.agc=$('agcChk').checked;
+  settings.gate=$('gateChk').checked;
+  settings.ptt=$('pttChk').checked;
+  settings.beep=$('beepChk').checked;
+  settings.mic=$('micSel').value;
+  settings.spk=$('spkSel').value;
+
+  saveSettings();
+
   if(old!==JSON.stringify([settings.ns,settings.ec,settings.agc,settings.mic])){try{await startMic()}catch(e){alert('Mikrofon açılamadı: '+e.message)}}
   Object.values(conns).forEach(c=>{if(c.audioEl&&c.audioEl.setSinkId&&settings.spk)c.audioEl.setSinkId(settings.spk).catch(()=>{})});
-  applyGain();$('settings').style.display='none';
+  
+  if(roomCode){
+    $('pttBtn').style.display=settings.ptt?'':'none';
+    $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
+  }
+
+  applyGain();
+  $('settings').style.display='none';
 };
 </script>
 </body>
