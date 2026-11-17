@@ -45,6 +45,10 @@ pre.logo{font-size:15px;line-height:1.1;overflow:hidden}
 #app{display:none;width:100%;height:100%;grid-template-columns:1fr 340px;gap:8px}
 #left{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
 #top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--mut);padding:4px 10px}
+#centerArea{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+#screenBox{display:none;border:1px solid var(--mut);background:#000;position:relative;flex-direction:column;max-height:45%}
+#screenBox.active{display:flex}
+#screenBox video{width:100%;height:100%;object-fit:contain;max-height:220px}
 #users{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px;align-content:start}
 .user{border:1px solid var(--mut);display:flex;flex-direction:column;min-width:0;background:var(--bg)}
 .user.speaking{border-color:var(--pri);box-shadow:0 0 8px rgba(51,255,0,.35)}
@@ -58,6 +62,7 @@ input[type=range]{flex:1;min-width:0;accent-color:var(--pri);height:14px}
 #right{min-height:0;min-width:0;display:flex;flex-direction:column}
 #msgs{flex:1;min-height:0;overflow:auto;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
 .msg{word-break:break-word}.msg b{color:var(--amb);text-shadow:none}
+#typingIndicator{padding:2px 10px;font-size:12px;min-height:20px;font-style:italic}
 #chatForm{border-top:1px dashed var(--mut);padding:6px 10px}
 #settings,#soundboardModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);align-items:center;justify-content:center;z-index:50;padding:12px}
 #settings .win,#soundboardModal .win{width:min(460px,100%);max-height:94vh;overflow:auto}
@@ -73,7 +78,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.3.2</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.4</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -107,11 +112,18 @@ select:focus{border-color:var(--pri)}
       <div><span id="codeTxt"></span> <button class="btn sm" id="copyBtn">kopyala</button> <button class="btn sm" id="copyLinkBtn">link kopyala</button></div>
       <span class="dim" id="status"></span>
     </div>
-    <div id="users"></div>
+    <div id="centerArea">
+      <div class="win" id="screenBox">
+        <div class="title"><span>+--- EKRAN PAYLAŞIMI ---+</span> <button class="btn sm red" id="stopScreenBtn">kapat</button></div>
+        <video id="screenVideo" autoplay playsinline></video>
+      </div>
+      <div id="users"></div>
+    </div>
     <div id="bar">
       <button class="btn" id="muteBtn">mikrofon: açık</button>
       <button class="btn" id="deafBtn">ses: açık</button>
       <button class="btn" id="pttBtn" style="display:none">PTT: kapalı</button>
+      <button class="btn" id="screenBtn">ekran paylaş</button>
       <button class="btn" id="sbOpenBtn">soundboard</button>
       <button class="btn" id="setBtn">ses ayarları</button>
       <button class="btn red" id="leaveBtn">ayrıl</button>
@@ -121,6 +133,7 @@ select:focus{border-color:var(--pri)}
   <div class="win" id="right">
     <div class="title"><span>+--- oda_sohbeti ---+</span></div>
     <div id="msgs"></div>
+    <div id="typingIndicator" class="dim"></div>
     <form id="chatForm"><label class="pr"><span>$</span><input type="text" id="chatIn" placeholder="mesaj yaz" autocomplete="off"></label></form>
   </div>
 </div>
@@ -178,8 +191,11 @@ const PREFIX='sesliodayilmaz-';
 let peer,myName,myPeerId,roomCode,isHost=false;
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
+let screenStream=null, currentCall=null;
 let conns={};
 let memberList=[];
+let typingUsers=new Set();
+let typingTimer=null;
 
 let savedData={};
 try{savedData=JSON.parse(localStorage.getItem('sesli_oda_cfg')||'{}')}catch(e){}
@@ -489,20 +505,37 @@ function onData(id,m){
     playSoundEffect(m.name);
     addMsg('soundboard',c.name+' bir efekt çaldı ('+m.name+')');
   }else if(m.t==='ping'){
-    // Karşıdan ping geldiğinde hemen pong (yanıt) gönder
     if(c.data && c.data.open) c.data.send({t:'pong', ts:m.ts});
   }else if(m.t==='pong'){
-    // Pong geldiğinde gecikmeyi hesapla
     if(c.pingStartTime){
       c.ping = Date.now() - c.pingStartTime;
       renderUsers();
     }
+  }else if(m.t==='typing'){
+    if(m.isTyping){
+      typingUsers.add(c.name||'biri');
+    }else{
+      typingUsers.delete(c.name||'biri');
+    }
+    updateTypingIndicator();
+  }
+}
+
+function updateTypingIndicator(){
+  const el=$('typingIndicator');
+  if(typingUsers.size===0){
+    el.textContent='';
+  }else if(typingUsers.size===1){
+    el.textContent='> '+Array.from(typingUsers)[0]+' yazıyor...';
+  }else{
+    el.textContent='> birden fazla kişi yazıyor...';
   }
 }
 
 function connectTo(id){
   if(conns[id] && conns[id].data && conns[id].data.open) return;
   const data=peer.connect(id,{reliable:true});setupData(id,data);
+  // Bağlantı kurulduğunda kendi ses akışımızı gönder
   if(outStream){const call=peer.call(id,outStream);setupCall(id,call)}
 }
 
@@ -510,6 +543,17 @@ function setupCall(id,call){
   conns[id]=conns[id]||{vol:100,localMute:false,ping:undefined,lastSeen:Date.now()};
   conns[id].call=call;
   call.on('stream',st=>{
+    // Eğer gelen akış ekran paylaşımı videosu ise video elementine bas
+    if(st.getVideoTracks().length > 0){
+      const vEl=$('screenVideo');
+      vEl.srcObject=st;
+      vEl.play().catch(()=>{});
+      $('screenBox').classList.add('active');
+      addMsg('sistem', (conns[id].name||'kullanıcı') + ' ekran paylaşımını başlattı.');
+      return;
+    }
+
+    // Normal ses akışı
     const c=conns[id];if(c.audioEl)return;
     const a=new Audio();a.srcObject=st;a.autoplay=true;a.volume=c.vol/100;a.muted=c.localMute||deafened;
     if(settings.spk&&a.setSinkId)a.setSinkId(settings.spk).catch(()=>{});
@@ -540,7 +584,6 @@ function dropPeer(id){
   renderUsers();
 }
 
-// Veri kanalı üzerinden gerçek Ping/Pong döngüsü ve Zombi bağlantı kontrolü
 setInterval(()=>{
   const now=Date.now();
   for(const [id,c] of Object.entries(conns)){
@@ -574,7 +617,10 @@ function enterRoom(){
     $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
   }
   peer.on('connection',data=>setupData(data.peer,data));
-  peer.on('call',call=>{call.answer(outStream);setupCall(call.peer,call)});
+  peer.on('call',call=>{
+    call.answer(outStream);
+    setupCall(call.peer,call);
+  });
   
   peer.on('disconnected',()=>{
     try{peer.reconnect()}catch(e){}
@@ -618,6 +664,53 @@ $('joinBtn').onclick=async()=>{
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
 
+// Ekran Paylaşımı Mantığı
+$('screenBtn').onclick=async()=>{
+  if(screenStream) return;
+  try{
+    screenStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:true});
+    $('screenVideo').srcObject = screenStream;
+    $('screenBox').classList.add('active');
+    $('screenBtn').classList.add('on');
+    $('screenBtn').textContent='ekran paylaşılyor';
+
+    // Odadaki herkese ekran akışını gönder
+    Object.keys(conns).forEach(id=>{
+      if(peer && screenStream){
+        peer.call(id, screenStream);
+      }
+    });
+
+    screenStream.getVideoTracks()[0].onended = ()=>stopScreenShare();
+  }catch(e){
+    console.error(e);
+  }
+};
+
+function stopScreenShare(){
+  if(screenStream){
+    screenStream.getTracks().forEach(t=>t.stop());
+    screenStream=null;
+  }
+  $('screenBox').classList.remove('active');
+  $('screenVideo').srcObject=null;
+  $('screenBtn').classList.remove('on');
+  $('screenBtn').textContent='ekran paylaş';
+}
+$('stopScreenBtn').onclick=stopScreenShare;
+
+// Yazışma (Typing) Bildirimi
+$('chatIn').oninput=()=>{
+  if(!typingTimer){
+    broadcast({t:'typing', isTyping:true});
+  }
+  clearTimeout(typingTimer);
+  typingTimer=setTimeout(()=>{
+    typingTimer=null;
+    broadcast({t:'typing', isTyping:false});
+  }, 1500);
+};
+
 $('muteBtn').onclick=()=>{
   muted=!muted;applyGain();
   $('muteBtn').textContent=muted?'mikrofon: kapalı':'mikrofon: açık';
@@ -651,6 +744,7 @@ let leaveTimer=null,leaveArmed=false;
 function disarmLeave(){leaveArmed=false;clearTimeout(leaveTimer);$('leaveBtn').textContent='ayrıl';$('cancelLeave').style.display='none'}
 $('leaveBtn').onclick=()=>{
   if(!leaveArmed){leaveArmed=true;$('leaveBtn').textContent='emin misin? evet';$('cancelLeave').style.display='';leaveTimer=setTimeout(disarmLeave,6000);return;}
+  stopScreenShare();
   try{peer.destroy()}catch(e){}location.reload();
 };
 $('cancelLeave').onclick=disarmLeave;
@@ -673,6 +767,8 @@ $('copyLinkBtn').onclick=()=>{
 
 $('chatForm').onsubmit=e=>{
   e.preventDefault();const t=$('chatIn').value.trim();if(!t)return;
+  clearTimeout(typingTimer); typingTimer=null;
+  broadcast({t:'typing', isTyping:false});
   addMsg(myName+' (sen)',t);broadcast({t:'chat',text:t});$('chatIn').value='';
 };
 
