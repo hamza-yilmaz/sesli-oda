@@ -73,7 +73,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.2</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.3</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -175,10 +175,11 @@ const $=id=>document.getElementById(id);
 const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]};
 const PREFIX='sesliodayilmaz-';
 
-let peer,myName,roomCode,isHost=false;
+let peer,myName,myPeerId,roomCode,isHost=false;
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
 let conns={};
+let memberList=[]; // Odadaki kullanıcıların sıralı listesi (Host seçimi için)
 
 let savedData={};
 try{savedData=JSON.parse(localStorage.getItem('sesli_oda_cfg')||'{}')}catch(e){}
@@ -412,6 +413,17 @@ setInterval(()=>{
 
 function setSpeaking(id,on){const e=document.querySelector('[data-id="'+id+'"]');if(e)e.classList.toggle('speaking',on)}
 
+function updateMemberList(){
+  memberList=[myPeerId, ...Object.keys(conns).filter(id=>conns[id].name)];
+  // Alfabetik olarak ilk sırada yer alan kullanıcı otomatik Host olur (Host Koruma Mekanizması)
+  memberList.sort();
+  const oldHost=isHost;
+  isHost=(memberList[0]===myPeerId);
+  if(isHost && !oldHost){
+    addMsg('sistem','[host koruma] Liderlik (host) size devredildi.');
+  }
+}
+
 function renderUsers(){
   const box=$('users');box.innerHTML='';
   const mk=(id,name,me)=>{
@@ -445,17 +457,25 @@ function addMsg(who,text){
 function broadcast(obj,except){Object.entries(conns).forEach(([id,c])=>{if(id!==except&&c.data&&c.data.open)c.data.send(obj)})}
 
 function setupData(id,data){
-  conns[id]=conns[id]||{vol:100,localMute:false,ping:0};
+  conns[id]=conns[id]||{vol:100,localMute:false,ping:0,lastSeen:Date.now()};
   conns[id].data=data;
-  data.on('open',()=>{data.send({t:'hello',name:myName})});
-  data.on('data',m=>onData(id,m));
+  data.on('open',()=>{
+    data.send({t:'hello',name:myName});
+    updateMemberList();
+  });
+  data.on('data',m=>{
+    if(conns[id]) conns[id].lastSeen=Date.now(); // Heartbeat güncelle
+    onData(id,m);
+  });
   data.on('close',()=>dropPeer(id));
 }
 
 function onData(id,m){
   const c=conns[id];
   if(m.t==='hello'){
-    c.name=m.name;renderUsers();
+    c.name=m.name;
+    updateMemberList();
+    renderUsers();
     playBeep('in');
     addMsg('sistem',m.name+' odaya katıldı');
     if(isHost){
@@ -463,22 +483,25 @@ function onData(id,m){
       c.data.send({t:'peers',ids:others});
     }
   }else if(m.t==='peers'){
-    m.ids.forEach(pid=>{if(!conns[pid])connectTo(pid)});
+    m.ids.forEach(pid=>{if(!conns[pid] && pid!==myPeerId)connectTo(pid)});
   }else if(m.t==='chat'){
     addMsg(c.name||'?',m.text);
   }else if(m.t==='sound'){
     playSoundEffect(m.name);
     addMsg('soundboard',c.name+' bir efekt çaldı ('+m.name+')');
+  }else if(m.t==='ping'){
+    c.data.send({t:'pong'});
   }
 }
 
 function connectTo(id){
+  if(conns[id] && conns[id].data && conns[id].data.open) return;
   const data=peer.connect(id,{reliable:true});setupData(id,data);
   if(outStream){const call=peer.call(id,outStream);setupCall(id,call)}
 }
 
 function setupCall(id,call){
-  conns[id]=conns[id]||{vol:100,localMute:false,ping:0};
+  conns[id]=conns[id]||{vol:100,localMute:false,ping:0,lastSeen:Date.now()};
   conns[id].call=call;
   call.on('stream',st=>{
     const c=conns[id];if(c.audioEl)return;
@@ -501,11 +524,21 @@ function dropPeer(id){
     playBeep('out');
     addMsg('sistem',c.name+' ayrıldı');
   }
-  delete conns[id];renderUsers();
+  delete conns[id];
+  updateMemberList();
+  renderUsers();
 }
 
+// Donan / Askıda kalan (Wi-Fi'dan mobil veriye geçen) bağlantıları temizleme ve Ping ölçüm döngüsü
 setInterval(()=>{
+  const now=Date.now();
   for(const [id,c] of Object.entries(conns)){
+    // 10 saniyedir hiçbir sinyal alınmadıysa zombi bağlantıdır, düşür
+    if(c.name && (now - (c.lastSeen||now) > 10000)){
+      dropPeer(id);
+      continue;
+    }
+    // WebRTC istatistikleri
     if(c.call && c.call.peerConnection){
       c.call.peerConnection.getStats().then(stats=>{
         stats.forEach(report=>{
@@ -523,7 +556,10 @@ setInterval(()=>{
 function initPeer(id){
   return new Promise((res,rej)=>{
     peer=new Peer(id,{config:ICE});
-    peer.on('open',()=>res());
+    peer.on('open',idVal=>{
+      myPeerId=idVal;
+      res();
+    });
     peer.on('error',e=>rej(e));
   });
 }
@@ -537,7 +573,13 @@ function enterRoom(){
   }
   peer.on('connection',data=>setupData(data.peer,data));
   peer.on('call',call=>{call.answer(outStream);setupCall(call.peer,call)});
-  peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
+  
+  // İnternet koptuğunda veya ağ değiştirdiğinde otomatik yeniden bağlanma
+  peer.on('disconnected',()=>{
+    try{peer.reconnect()}catch(e){}
+  });
+
+  updateMemberList();
   renderUsers();
 }
 
@@ -546,8 +588,10 @@ $('createBtn').onclick=async()=>{
   saveSettings();
   try{
     msg('mikrofon açılıyor...',true);await startMic();
-    roomCode=genCode();isHost=true;
-    await initPeer(PREFIX+roomCode);
+    roomCode=genCode();
+    isHost=true;
+    myPeerId=PREFIX+roomCode;
+    await initPeer(myPeerId);
     enterRoom();
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
@@ -565,11 +609,10 @@ $('joinBtn').onclick=async()=>{
   saveSettings();
   try{
     msg('mikrofon açılıyor...',true);await startMic();
-    await initPeer();
+    await initPeer(); // Rastgele ID ile bağlanır
     enterRoom();
     const hostId=PREFIX+roomCode;
-    const data=peer.connect(hostId,{reliable:true});setupData(hostId,data);
-    const call=peer.call(hostId,outStream);setupCall(hostId,call);
+    connectTo(hostId);
     setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odaya bağlanılamadı. Kodu kontrol et.');location.reload()}},12000);
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
@@ -649,8 +692,8 @@ $('setBtn').onclick=async()=>{
 
 $('pttChk').onchange=()=>{$('pttKeyBox').style.display=$('pttChk').checked?'flex':'none'};
 $('gateRange').oninput=()=>{settings.thr=+$('gateRange').value};
-$('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
-$('gateChk').onchange=()=>{settings.gate=$('gateChk').checked;applyGain()};
+ $('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
+ $('gateChk').onchange=()=>{settings.gate=$('gateChk').checked;applyGain()};
 
 $('applyBtn').onclick=async()=>{
   const old=JSON.stringify([settings.ns,settings.ec,settings.agc,settings.mic]);
