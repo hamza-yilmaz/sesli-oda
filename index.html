@@ -73,7 +73,7 @@ select:focus{border-color:var(--pri)}
 <body>
 
 <div class="win" id="lobby">
-  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.3</span></div>
+  <div class="title"><span>+--- sesli_oda.sh ---+</span><span>v1.3.1</span></div>
   <div class="body">
 <pre class="logo">╔═╗╔═╗╔═╗╦  ╦  ╔═╗╔╦╗╔═╗
 ╚═╗║╣ ╚═╗║  ║  ║ ║║║ ╠═╣
@@ -179,7 +179,7 @@ let peer,myName,myPeerId,roomCode,isHost=false;
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
 let conns={};
-let memberList=[]; // Odadaki kullanıcıların sıralı listesi (Host seçimi için)
+let memberList=[];
 
 let savedData={};
 try{savedData=JSON.parse(localStorage.getItem('sesli_oda_cfg')||'{}')}catch(e){}
@@ -415,7 +415,6 @@ function setSpeaking(id,on){const e=document.querySelector('[data-id="'+id+'"]')
 
 function updateMemberList(){
   memberList=[myPeerId, ...Object.keys(conns).filter(id=>conns[id].name)];
-  // Alfabetik olarak ilk sırada yer alan kullanıcı otomatik Host olur (Host Koruma Mekanizması)
   memberList.sort();
   const oldHost=isHost;
   isHost=(memberList[0]===myPeerId);
@@ -464,7 +463,7 @@ function setupData(id,data){
     updateMemberList();
   });
   data.on('data',m=>{
-    if(conns[id]) conns[id].lastSeen=Date.now(); // Heartbeat güncelle
+    if(conns[id]) conns[id].lastSeen=Date.now();
     onData(id,m);
   });
   data.on('close',()=>dropPeer(id));
@@ -515,30 +514,35 @@ function setupCall(id,call){
   call.on('close',()=>dropPeer(id));
 }
 
+// Mükerrer bildirim ve silmeyi önleyen güvenli çıkış fonksiyonu
 function dropPeer(id){
   const c=conns[id];if(!c)return;
+  
+  // Eğer kullanıcı zaten isme sahipse ve daha önce düşürülmediyse bildirim çal
+  const wasInRoom = !!c.name;
+
   if(c.audioEl){c.audioEl.srcObject=null}
   try{c.call&&c.call.close()}catch(e){}
   try{c.data&&c.data.close()}catch(e){}
-  if(c.name){
+
+  delete conns[id];
+
+  if(wasInRoom){
     playBeep('out');
     addMsg('sistem',c.name+' ayrıldı');
   }
-  delete conns[id];
+
   updateMemberList();
   renderUsers();
 }
 
-// Donan / Askıda kalan (Wi-Fi'dan mobil veriye geçen) bağlantıları temizleme ve Ping ölçüm döngüsü
 setInterval(()=>{
   const now=Date.now();
   for(const [id,c] of Object.entries(conns)){
-    // 10 saniyedir hiçbir sinyal alınmadıysa zombi bağlantıdır, düşür
     if(c.name && (now - (c.lastSeen||now) > 10000)){
       dropPeer(id);
       continue;
     }
-    // WebRTC istatistikleri
     if(c.call && c.call.peerConnection){
       c.call.peerConnection.getStats().then(stats=>{
         stats.forEach(report=>{
@@ -574,7 +578,6 @@ function enterRoom(){
   peer.on('connection',data=>setupData(data.peer,data));
   peer.on('call',call=>{call.answer(outStream);setupCall(call.peer,call)});
   
-  // İnternet koptuğunda veya ağ değiştirdiğinde otomatik yeniden bağlanma
   peer.on('disconnected',()=>{
     try{peer.reconnect()}catch(e){}
   });
@@ -609,7 +612,7 @@ $('joinBtn').onclick=async()=>{
   saveSettings();
   try{
     msg('mikrofon açılıyor...',true);await startMic();
-    await initPeer(); // Rastgele ID ile bağlanır
+    await initPeer();
     enterRoom();
     const hostId=PREFIX+roomCode;
     connectTo(hostId);
@@ -692,8 +695,8 @@ $('setBtn').onclick=async()=>{
 
 $('pttChk').onchange=()=>{$('pttKeyBox').style.display=$('pttChk').checked?'flex':'none'};
 $('gateRange').oninput=()=>{settings.thr=+$('gateRange').value};
- $('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
- $('gateChk').onchange=()=>{settings.gate=$('gateChk').checked;applyGain()};
+$('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
+$('gateChk').onchange=()=>{settings.gate=$('gateChk').checked;applyGain()};
 
 $('applyBtn').onclick=async()=>{
   const old=JSON.stringify([settings.ns,settings.ec,settings.agc,settings.mic]);
