@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sesli Oda</title>
+<style>
+:root{--bg:#13151f;--panel:#1c1f2e;--line:#2c3045;--tx:#ece9f5;--mut:#8f93ad;--ac:#8b8cff;--acx:#10111a;--ok:#5fe0a0;--bad:#ff6f7d}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:9px 14px}
+button:hover{border-color:var(--ac)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button.pri{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+button.on{background:var(--bad);border-color:var(--bad);color:#fff}
+input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+.hidden{display:none!important}
+#join{max-width:420px;margin:0 auto;padding:12vh 20px 20px}
+#join h1{font-size:30px;margin:0 0 6px;letter-spacing:-.5px}
+#join p{color:var(--mut);margin:0 0 28px}
+.row{display:flex;gap:8px;margin-bottom:14px}
+label{display:block;color:var(--mut);font-size:13px;margin-bottom:5px}
+#code{letter-spacing:2px;font-family:Consolas,monospace;text-transform:uppercase}
+#err{color:var(--bad);min-height:22px;margin-top:6px}
+.sep{color:var(--mut);text-align:center;margin:18px 0}
+#room{display:grid;grid-template-columns:270px 1fr;height:100%}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:16px;overflow:auto}
+.codebox{background:var(--bg);border:1px dashed var(--ac);border-radius:10px;padding:12px;text-align:center}
+.codebox b{display:block;font:600 19px Consolas,monospace;letter-spacing:2px;margin:4px 0 8px}
+.codebox span{color:var(--mut);font-size:12px}
+#peers{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+#peers li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+#status{color:var(--mut);font-size:12px}
+main{display:flex;flex-direction:column;min-width:0}
+#grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;padding:14px;align-content:start;overflow:auto}
+#grid:empty::before{content:"Ekran paylaşımı başlayınca burada görünür.";color:var(--mut);padding:30px}
+.tile{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9}
+.tile video{width:100%;height:100%;object-fit:contain}
+.tile em{position:absolute;left:10px;bottom:8px;font-style:normal;background:rgba(0,0,0,.65);padding:2px 9px;border-radius:6px;font-size:13px}
+#bar{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--line);background:var(--panel)}
+@media(max-width:720px){#room{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{border-right:0;border-bottom:1px solid var(--line);max-height:42vh}}
+</style>
+</head>
+<body>
+
+<section id="join">
+  <h1>Sesli Oda</h1>
+  <p>Aynı kodu giren herkes aynı odaya düşer. Ses ve ekran doğrudan kişiler arasında akar.</p>
+  <label for="name">Adın</label>
+  <div class="row"><input id="name" maxlength="20" placeholder="Örn. Ali" autocomplete="off"></div>
+  <button class="pri" id="create" style="width:100%">Yeni oda kur</button>
+  <div class="sep">veya kodu gir</div>
+  <label for="code">Oda kodu (12 karakter)</label>
+  <div class="row"><input id="code" placeholder="XXXX-XXXX-XXXX" autocomplete="off"><button id="go">Katıl</button></div>
+  <div id="err"></div>
+</section>
+
+<section id="room" class="hidden">
+  <aside>
+    <div class="codebox"><span>Oda kodu</span><b id="shownCode"></b><button id="copy">Davet linkini kopyala</button></div>
+    <div><label>Odadakiler</label><ul id="peers"></ul></div>
+    <div id="status"></div>
+  </aside>
+  <main>
+    <div id="grid"></div>
+    <div id="bar">
+      <button id="mute">Mikrofonu kapat</button>
+      <button id="share">Ekranı paylaş</button>
+      <button id="leave">Ayrıl</button>
+    </div>
+  </main>
+</section>
+<div id="audios" class="hidden"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+// ---- Ayarlar -------------------------------------------------------------
+// Buluşma noktası: halka açık ücretsiz MQTT aracıları. Hepsine aynı anda bağlanılır,
+// biri engelliyse diğeri devreye girer.
+const BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://test.mosquitto.org:8081'
+];
+const ICE = [{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
+
+// ---- Yardımcılar ---------------------------------------------------------
+const $ = s => document.querySelector(s);
+const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const TE = new TextEncoder(), TD = new TextDecoder();
+const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+const hex = u => [...u].map(x => x.toString(16).padStart(2,'0')).join('');
+const b64 = u => { let s=''; for (const x of u) s+=String.fromCharCode(x); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const norm = c => c.toUpperCase().replace(/[^A-Z0-9]/g,'');
+const fmt = c => c.match(/.{1,4}/g).join('-');
+const newCode = () => fmt([...rnd(12)].map(x => ALPHA[x%32]).join(''));
+
+let myId, myName, code, topic, key, clients=[], up=new Set(), seen=new Set();
+let micStream, micTrack, screenStream, muted=false;
+const peers = new Map();
+
+// ---- Şifreleme: oda kodundan hem konu adı hem anahtar türetilir ------------
+async function derive(c){
+  const base = await crypto.subtle.importKey('raw', TE.encode(c), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    {name:'PBKDF2', salt:TE.encode('sesli-oda-v1'), iterations:200000, hash:'SHA-256'}, base, 384));
+  topic = 'sesoda/' + hex(bits.slice(0,16));
+  key = await crypto.subtle.importKey('raw', bits.slice(16,48), 'AES-GCM', false, ['encrypt','decrypt']);
+}
+async function enc(o){
+  const iv = rnd(12);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, TE.encode(JSON.stringify(o))));
+  const out = new Uint8Array(12+ct.length); out.set(iv); out.set(ct,12);
+  return b64(out);
+}
+async function dec(s){
+  const u = unb64(s);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12)}, key, u.slice(12));
+  return JSON.parse(TD.decode(pt));
+}
+
+// ---- Sinyalleşme (MQTT üzerinden) ----------------------------------------
+async function send(o){
+  o.from = myId; o.n = myName; o.mid = hex(rnd(6));
+  const p = await enc(o);
+  clients.forEach(c => c.connected && c.publish(topic, p));
+}
+function connectBrokers(){
+  BROKERS.forEach(url => {
+    const c = mqtt.connect(url, {reconnectPeriod:5000, connectTimeout:10000, clientId:'so_'+myId+hex(rnd(2))});
+    clients.push(c);
+    c.on('connect', () => { c.subscribe(topic); up.add(url); renderStatus(); send({t:'hello'}); });
+    c.on('close', () => { up.delete(url); renderStatus(); });
+    c.on('error', () => {});
+    c.on('message', (t,m) => onMsg(m.toString()));
+  });
+}
+async function onMsg(raw){
+  let m; try { m = await dec(raw); } catch { return; }
+  if (m.from === myId || (m.to && m.to !== myId) || seen.has(m.mid)) return;
+  seen.add(m.mid);
+  if (m.t === 'bye') return removePeer(m.from);
+  const p = peers.get(m.from) || createPeer(m.from, m.n);
+  p.name = m.n || p.name;
+  if (m.t === 'desc') await onDesc(p, m.d);
+  if (m.t === 'ice') await onIce(p, m.c);
+  renderPeers();
+}
+
+// ---- WebRTC: "mükemmel müzakere" deseni ----------------------------------
+function createPeer(id, name){
+  const pc = new RTCPeerConnection({iceServers:ICE});
+  const p = {id, name, pc, polite: myId > id, making:false, ignore:false, queue:[], screenSenders:[]};
+  peers.set(id, p);
+  if (micTrack) pc.addTrack(micTrack, micStream); else pc.addTransceiver('audio',{direction:'recvonly'});
+  if (screenStream) addScreen(p);
+  pc.onicecandidate = e => { if (e.candidate) send({t:'ice', to:id, c:e.candidate}); };
+  pc.onnegotiationneeded = async () => {
+    try { p.making = true; await pc.setLocalDescription(); await send({t:'desc', to:id, d:pc.localDescription}); }
+    catch(e){ console.warn(e); } finally { p.making = false; }
+  };
+  pc.ontrack = e => showTrack(p, e.track);
+  pc.onconnectionstatechange = () => {
+    renderPeers();
+    if (pc.connectionState === 'failed') removePeer(id);
+    if (pc.connectionState === 'disconnected') setTimeout(() => {
+      if (peers.get(id) === p && pc.connectionState !== 'connected') removePeer(id);
+    }, 8000);
+  };
+  return p;
+}
+async function onDesc(p, d){
+  const pc = p.pc;
+  const collision = d.type === 'offer' && (p.making || pc.signalingState !== 'stable');
+  p.ignore = !p.polite && collision;
+  if (p.ignore) return;
+  await pc.setRemoteDescription(d);
+  for (const c of p.queue.splice(0)) await pc.addIceCandidate(c).catch(()=>{});
+  if (d.type === 'offer') { await pc.setLocalDescription(); await send({t:'desc', to:p.id, d:pc.localDescription}); }
+}
+async function onIce(p, c){
+  if (!p.pc.remoteDescription) return p.queue.push(c);
+  try { await p.pc.addIceCandidate(c); } catch(e){ if (!p.ignore) console.warn(e); }
+}
+function removePeer(id){
+  const p = peers.get(id); if (!p) return;
+  peers.delete(id); p.pc.close();
+  document.querySelectorAll('[data-peer="'+id+'"]').forEach(el => el.remove());
+  renderPeers();
+}
+
+// ---- Gelen ses / görüntü --------------------------------------------------
+function showTrack(p, track){
+  const stream = new MediaStream([track]);
+  if (track.kind === 'audio') {
+    const a = document.createElement('audio');
+    a.autoplay = true; a.srcObject = stream; a.dataset.peer = p.id;
+    $('#audios').append(a);
+    a.play().catch(()=>{});
+  } else {
+    const t = document.createElement('div');
+    t.className = 'tile hidden'; t.dataset.peer = p.id;
+    const v = document.createElement('video');
+    v.autoplay = true; v.playsInline = true; v.muted = true; v.srcObject = stream;
+    t.ondblclick = () => v.requestFullscreen?.();
+    const l = document.createElement('em'); l.textContent = p.name + ' ekranı';
+    t.append(v, l); $('#grid').append(t);
+    track.onunmute = () => t.classList.remove('hidden');
+    track.onmute = () => t.classList.add('hidden');
+    track.onended = () => t.remove();
+  }
+}
+
+// ---- Mikrofon ve ekran paylaşımı -----------------------------------------
+function addScreen(p){
+  screenStream.getTracks().forEach(t => p.screenSenders.push(p.pc.addTrack(t, screenStream)));
+}
+async function toggleScreen(){
+  if (screenStream) return stopScreen();
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30}, audio:true});
+  } catch { return; }
+  peers.forEach(addScreen);
+  screenStream.getVideoTracks()[0].onended = stopScreen;
+  $('#share').textContent = 'Paylaşımı durdur'; $('#share').classList.add('on');
+}
+function stopScreen(){
+  if (!screenStream) return;
+  peers.forEach(p => { p.screenSenders.forEach(s => { try { p.pc.removeTrack(s); } catch{} }); p.screenSenders = []; });
+  screenStream.getTracks().forEach(t => t.stop()); screenStream = null;
+  $('#share').textContent = 'Ekranı paylaş'; $('#share').classList.remove('on');
+}
+function toggleMute(){
+  if (!micTrack) return;
+  muted = !muted; micTrack.enabled = !muted;
+  $('#mute').textContent = muted ? 'Mikrofonu aç' : 'Mikrofonu kapat';
+  $('#mute').classList.toggle('on', muted);
+}
+
+// ---- Arayüz --------------------------------------------------------------
+function renderPeers(){
+  const ul = $('#peers'); ul.innerHTML = '';
+  const add = (name, cls) => { const li = document.createElement('li'); li.innerHTML = '<span class="dot '+cls+'"></span>'; li.append(document.createTextNode(name)); ul.append(li); };
+  add(myName + ' (sen)', 'ok');
+  peers.forEach(p => {
+    const s = p.pc.connectionState;
+    add(p.name || 'Misafir', s === 'connected' ? 'ok' : s === 'failed' ? 'bad' : '');
+  });
+}
+function renderStatus(){
+  $('#status').textContent = up.size
+    ? 'Buluşma sunucuları: ' + up.size + '/' + BROKERS.length + ' bağlı'
+    : 'Buluşma sunucularına bağlanılıyor… Uzun sürerse bu sunucular engelli olabilir.';
+}
+function showErr(t){ $('#err').textContent = t; }
+
+async function join(raw){
+  const c = norm(raw);
+  if (c.length !== 12) return showErr('Kod 12 harf/rakamdan oluşmalı.');
+  myName = ($('#name').value.trim() || 'Misafir').slice(0,20);
+  myId = hex(rnd(6)); code = fmt(c);
+  showErr('');
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+    micTrack = micStream.getAudioTracks()[0];
+  } catch { /* mikrofon yoksa sadece dinleyici olarak devam */ }
+  await derive(c);
+  history.replaceState(null, '', '#' + code);
+  $('#join').classList.add('hidden'); $('#room').classList.remove('hidden');
+  $('#shownCode').textContent = code;
+  if (!micTrack) { $('#mute').disabled = true; $('#mute').textContent = 'Mikrofon yok'; }
+  renderPeers(); renderStatus(); connectBrokers();
+  setInterval(() => send({t:'hello'}), 5000);
+}
+
+$('#create').onclick = () => join(newCode());
+$('#go').onclick = () => join($('#code').value);
+$('#code').onkeydown = e => { if (e.key === 'Enter') join($('#code').value); };
+$('#mute').onclick = toggleMute;
+$('#share').onclick = toggleScreen;
+$('#copy').onclick = async () => {
+  await navigator.clipboard.writeText(location.href.split('#')[0] + '#' + code);
+  $('#copy').textContent = 'Kopyalandı';
+  setTimeout(() => $('#copy').textContent = 'Davet linkini kopyala', 1500);
+};
+$('#leave').onclick = async () => {
+  await send({t:'bye'});
+  history.replaceState(null, '', location.pathname);
+  setTimeout(() => location.reload(), 200);
+};
+window.addEventListener('beforeunload', () => { try { send({t:'bye'}); } catch{} });
+
+// Davet linkiyle gelindiyse kodu doldur
+if (location.hash.length > 1) $('#code').value = location.hash.slice(1);
+</script>
+</body>
+</html>
