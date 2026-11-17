@@ -10,8 +10,9 @@
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
 button,input{font:inherit;color:inherit}
-button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:9px 14px}
-button:hover{border-color:var(--ac)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:10px 14px}
+button:hover:not(:disabled){border-color:var(--ac)}
+button:disabled{opacity:.55;cursor:not-allowed}
 button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 button.pri{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
 button.on{background:var(--bad);border-color:var(--bad);color:#fff}
@@ -31,18 +32,21 @@ aside{background:var(--panel);border-right:1px solid var(--line);padding:18px;di
 .codebox b{display:block;font:600 19px Consolas,monospace;letter-spacing:2px;margin:4px 0 8px}
 .codebox span{color:var(--mut);font-size:12px}
 #peers{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-#peers li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg)}
+#peers li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg);outline:2px solid transparent;transition:outline-color .12s}
+#peers li.talk{outline-color:var(--ok)}
+#peers li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
 .dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
 #status{color:var(--mut);font-size:12px}
+#micMsg{color:var(--bad);font-size:13px}
 main{display:flex;flex-direction:column;min-width:0}
 #grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;padding:14px;align-content:start;overflow:auto}
-#grid:empty::before{content:"Ekran paylaşımı başlayınca burada görünür.";color:var(--mut);padding:30px}
+#grid:empty::before{content:"Biri ekran paylaşınca burada görünür.";color:var(--mut);padding:30px}
 .tile{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9}
 .tile video{width:100%;height:100%;object-fit:contain}
 .tile em{position:absolute;left:10px;bottom:8px;font-style:normal;background:rgba(0,0,0,.65);padding:2px 9px;border-radius:6px;font-size:13px}
-#bar{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--line);background:var(--panel)}
-@media(max-width:720px){#room{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{border-right:0;border-bottom:1px solid var(--line);max-height:42vh}}
+#bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:14px;border-top:1px solid var(--line);background:var(--panel)}
+@media(max-width:720px){#room{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{border-right:0;border-bottom:1px solid var(--line);max-height:46vh}}
 </style>
 </head>
 <body>
@@ -62,13 +66,15 @@ main{display:flex;flex-direction:column;min-width:0}
 <section id="room" class="hidden">
   <aside>
     <div class="codebox"><span>Oda kodu</span><b id="shownCode"></b><button id="copy">Davet linkini kopyala</button></div>
+    <button id="tap" class="pri hidden">🔊 Sesi etkinleştir (dokun)</button>
     <div><label>Odadakiler</label><ul id="peers"></ul></div>
+    <div id="micMsg"></div>
     <div id="status"></div>
   </aside>
   <main>
     <div id="grid"></div>
     <div id="bar">
-      <button id="mute">Mikrofonu kapat</button>
+      <button id="mute">🎙 Mikrofon açık</button>
       <button id="share">Ekranı paylaş</button>
       <button id="leave">Ayrıl</button>
     </div>
@@ -79,8 +85,6 @@ main{display:flex;flex-direction:column;min-width:0}
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 // ---- Ayarlar -------------------------------------------------------------
-// Buluşma noktası: halka açık ücretsiz MQTT aracıları. Hepsine aynı anda bağlanılır,
-// biri engelliyse diğeri devreye girer.
 const BROKERS = [
   'wss://broker.emqx.io:8084/mqtt',
   'wss://broker.hivemq.com:8884/mqtt',
@@ -99,12 +103,15 @@ const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const norm = c => c.toUpperCase().replace(/[^A-Z0-9]/g,'');
 const fmt = c => c.match(/.{1,4}/g).join('-');
 const newCode = () => fmt([...rnd(12)].map(x => ALPHA[x%32]).join(''));
+const store = (k,v) => { try { return v===undefined ? sessionStorage.getItem(k) : sessionStorage.setItem(k,v); } catch { return null; } };
 
-let myId, myName, code, topic, key, clients=[], up=new Set(), seen=new Set();
-let micStream, micTrack, screenStream, muted=false;
+let myId, myName, code, topic, key, byePayload, clients=[], up=new Set(), seen=new Set();
+let micStream, micTrack, screenStream, muted=false, actx;
+let uid = store('uid') || (store('uid', hex(rnd(8))), store('uid'));
+const me = {talk:false};
 const peers = new Map();
 
-// ---- Şifreleme: oda kodundan hem konu adı hem anahtar türetilir ------------
+// ---- Şifreleme -----------------------------------------------------------
 async function derive(c){
   const base = await crypto.subtle.importKey('raw', TE.encode(c), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits(
@@ -124,9 +131,9 @@ async function dec(s){
   return JSON.parse(TD.decode(pt));
 }
 
-// ---- Sinyalleşme (MQTT üzerinden) ----------------------------------------
+// ---- Sinyalleşme ---------------------------------------------------------
 async function send(o){
-  o.from = myId; o.n = myName; o.mid = hex(rnd(6));
+  o.from = myId; o.u = uid; o.n = myName; o.m = muted; o.mid = hex(rnd(6));
   const p = await enc(o);
   clients.forEach(c => c.connected && c.publish(topic, p));
 }
@@ -145,17 +152,19 @@ async function onMsg(raw){
   if (m.from === myId || (m.to && m.to !== myId) || seen.has(m.mid)) return;
   seen.add(m.mid);
   if (m.t === 'bye') return removePeer(m.from);
+  // Aynı kişi sayfayı yenilediyse eski (hayalet) bağlantısını kaldır
+  if (m.u) for (const [id,q] of peers) if (q.u === m.u && id !== m.from) removePeer(id);
   const p = peers.get(m.from) || createPeer(m.from, m.n);
-  p.name = m.n || p.name;
+  p.u = m.u; p.name = m.n || p.name; p.muted = !!m.m; p.seen = Date.now();
   if (m.t === 'desc') await onDesc(p, m.d);
   if (m.t === 'ice') await onIce(p, m.c);
   renderPeers();
 }
 
-// ---- WebRTC: "mükemmel müzakere" deseni ----------------------------------
+// ---- WebRTC (mükemmel müzakere) ------------------------------------------
 function createPeer(id, name){
   const pc = new RTCPeerConnection({iceServers:ICE});
-  const p = {id, name, pc, polite: myId > id, making:false, ignore:false, queue:[], screenSenders:[]};
+  const p = {id, name, pc, polite: myId > id, making:false, ignore:false, queue:[], screenSenders:[], ivs:[], talk:false, muted:false, seen:Date.now()};
   peers.set(id, p);
   if (micTrack) pc.addTrack(micTrack, micStream); else pc.addTransceiver('audio',{direction:'recvonly'});
   if (screenStream) addScreen(p);
@@ -164,13 +173,13 @@ function createPeer(id, name){
     try { p.making = true; await pc.setLocalDescription(); await send({t:'desc', to:id, d:pc.localDescription}); }
     catch(e){ console.warn(e); } finally { p.making = false; }
   };
-  pc.ontrack = e => showTrack(p, e.track);
+  pc.ontrack = e => showTrack(p, e.track, e.streams[0]);
   pc.onconnectionstatechange = () => {
     renderPeers();
-    if (pc.connectionState === 'failed') removePeer(id);
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') removePeer(id);
     if (pc.connectionState === 'disconnected') setTimeout(() => {
       if (peers.get(id) === p && pc.connectionState !== 'connected') removePeer(id);
-    }, 8000);
+    }, 6000);
   };
   return p;
 }
@@ -189,42 +198,107 @@ async function onIce(p, c){
 }
 function removePeer(id){
   const p = peers.get(id); if (!p) return;
-  peers.delete(id); p.pc.close();
+  peers.delete(id); p.ivs.forEach(clearInterval);
+  try { p.pc.close(); } catch {}
   document.querySelectorAll('[data-peer="'+id+'"]').forEach(el => el.remove());
   renderPeers();
 }
+// Bağlantısı kopmuş ama haber vermeden kaybolanları temizle
+setInterval(() => peers.forEach((p,id) => {
+  if (Date.now() - p.seen > 25000 && p.pc.connectionState !== 'connected') removePeer(id);
+}), 5000);
 
-// ---- Gelen ses / görüntü --------------------------------------------------
-function showTrack(p, track){
-  const stream = new MediaStream([track]);
-  if (track.kind === 'audio') {
-    const a = document.createElement('audio');
-    a.autoplay = true; a.srcObject = stream; a.dataset.peer = p.id;
-    $('#audios').append(a);
-    a.play().catch(()=>{});
-  } else {
-    const t = document.createElement('div');
-    t.className = 'tile hidden'; t.dataset.peer = p.id;
-    const v = document.createElement('video');
-    v.autoplay = true; v.playsInline = true; v.muted = true; v.srcObject = stream;
-    t.ondblclick = () => v.requestFullscreen?.();
-    const l = document.createElement('em'); l.textContent = p.name + ' ekranı';
-    t.append(v, l); $('#grid').append(t);
-    track.onunmute = () => t.classList.remove('hidden');
-    track.onmute = () => t.classList.add('hidden');
-    track.onended = () => t.remove();
-  }
+// ---- Ses seviyesi (kim konuşuyor) ----------------------------------------
+function watch(stream, cb){
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const an = actx.createAnalyser(); an.fftSize = 512;
+    actx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    return setInterval(() => {
+      an.getByteTimeDomainData(buf);
+      let s = 0; for (const v of buf) { const d = (v-128)/128; s += d*d; }
+      cb(Math.sqrt(s/buf.length) > 0.035);
+    }, 150);
+  } catch { return null; }
+}
+function applyTalk(){
+  document.querySelectorAll('#peers li').forEach(li => {
+    const o = li.dataset.id === 'me' ? me : peers.get(li.dataset.id);
+    li.classList.toggle('talk', !!(o && o.talk));
+  });
 }
 
+// ---- Gelen ses / görüntü -------------------------------------------------
+function showTrack(p, track, stream){
+  const own = new MediaStream([track]);
+  let el;
+  if (track.kind === 'audio') {
+    el = document.createElement('audio');
+    el.autoplay = true; el.srcObject = own; el.dataset.peer = p.id;
+    $('#audios').append(el);
+    el.play().catch(() => $('#tap').classList.remove('hidden'));
+    const iv = watch(own, on => { if (p.talk !== on) { p.talk = on; applyTalk(); } });
+    if (iv) p.ivs.push(iv);
+  } else {
+    el = document.createElement('div');
+    el.className = 'tile hidden'; el.dataset.peer = p.id;
+    const v = document.createElement('video');
+    v.autoplay = true; v.playsInline = true; v.muted = true; v.srcObject = own;
+    el.ondblclick = () => v.requestFullscreen && v.requestFullscreen();
+    const l = document.createElement('em'); l.textContent = p.name + ' ekranı';
+    el.append(v, l); $('#grid').append(el);
+    track.onunmute = () => el.classList.remove('hidden');
+    track.onmute = () => el.classList.add('hidden');
+  }
+  const kill = () => el.remove();
+  track.onended = kill;
+  if (stream) stream.addEventListener('removetrack', e => { if (e.track === track) kill(); });
+}
+function unlockAudio(){
+  if (actx && actx.state === 'suspended') actx.resume();
+  document.querySelectorAll('#audios audio').forEach(a => a.play().catch(()=>{}));
+  $('#tap').classList.add('hidden');
+}
+document.addEventListener('pointerdown', unlockAudio);
+
 // ---- Mikrofon ve ekran paylaşımı -----------------------------------------
+function micMsg(t){ $('#micMsg').textContent = t || ''; }
+function explain(e){
+  if (!navigator.mediaDevices) return 'Bu sayfa mikrofona erişemiyor. Linki doğrudan Chrome/Safari ile aç (WhatsApp vb. uygulama içi tarayıcı çalışmaz).';
+  if (e.name === 'NotAllowedError') return 'Mikrofon izni verilmedi. Adres çubuğundaki kilit/ayarlar simgesinden mikrofona izin ver, sonra "Mikrofonu etkinleştir"e bas.';
+  if (e.name === 'NotFoundError') return 'Mikrofon bulunamadı.';
+  return 'Mikrofon açılamadı (' + (e.name || e) + ').';
+}
+async function enableMic(){
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+    micTrack = micStream.getAudioTracks()[0];
+    micTrack.enabled = !muted;
+    peers.forEach(p => p.pc.addTrack(micTrack, micStream));
+    watch(micStream, on => { if (me.talk !== on) { me.talk = on; applyTalk(); } });
+    micMsg('');
+  } catch(e) { micMsg(explain(e)); }
+  setMuteUI(); renderPeers();
+}
+function setMuteUI(){
+  const b = $('#mute');
+  if (!micTrack) { b.textContent = '🎙 Mikrofonu etkinleştir'; b.classList.remove('on'); return; }
+  b.textContent = muted ? '🔇 Mikrofon kapalı (aç)' : '🎙 Mikrofon açık';
+  b.classList.toggle('on', muted);
+}
+function toggleMute(){
+  if (!micTrack) return enableMic();
+  muted = !muted; micTrack.enabled = !muted;
+  setMuteUI(); renderPeers(); send({t:'hello'});
+}
 function addScreen(p){
   screenStream.getTracks().forEach(t => p.screenSenders.push(p.pc.addTrack(t, screenStream)));
 }
 async function toggleScreen(){
   if (screenStream) return stopScreen();
-  try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30}, audio:true});
-  } catch { return; }
+  try { screenStream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30}, audio:true}); }
+  catch { return; }
   peers.forEach(addScreen);
   screenStream.getVideoTracks()[0].onended = stopScreen;
   $('#share').textContent = 'Paylaşımı durdur'; $('#share').classList.add('on');
@@ -235,21 +309,23 @@ function stopScreen(){
   screenStream.getTracks().forEach(t => t.stop()); screenStream = null;
   $('#share').textContent = 'Ekranı paylaş'; $('#share').classList.remove('on');
 }
-function toggleMute(){
-  if (!micTrack) return;
-  muted = !muted; micTrack.enabled = !muted;
-  $('#mute').textContent = muted ? 'Mikrofonu aç' : 'Mikrofonu kapat';
-  $('#mute').classList.toggle('on', muted);
-}
 
 // ---- Arayüz --------------------------------------------------------------
 function renderPeers(){
   const ul = $('#peers'); ul.innerHTML = '';
-  const add = (name, cls) => { const li = document.createElement('li'); li.innerHTML = '<span class="dot '+cls+'"></span>'; li.append(document.createTextNode(name)); ul.append(li); };
-  add(myName + ' (sen)', 'ok');
+  const add = (id, name, cls, isMuted, talk) => {
+    const li = document.createElement('li'); li.dataset.id = id;
+    if (talk) li.classList.add('talk');
+    const d = document.createElement('span'); d.className = 'dot ' + cls;
+    const n = document.createElement('span'); n.className = 'nm'; n.textContent = name;
+    li.append(d, n);
+    if (isMuted) { const m = document.createElement('span'); m.textContent = '🔇'; m.title = 'Mikrofon kapalı'; li.append(m); }
+    ul.append(li);
+  };
+  add('me', myName + ' (sen)', 'ok', muted || !micTrack, me.talk);
   peers.forEach(p => {
     const s = p.pc.connectionState;
-    add(p.name || 'Misafir', s === 'connected' ? 'ok' : s === 'failed' ? 'bad' : '');
+    add(p.id, p.name || 'Misafir', s === 'connected' ? 'ok' : s === 'failed' ? 'bad' : '', p.muted, p.talk);
   });
 }
 function renderStatus(){
@@ -263,17 +339,15 @@ async function join(raw){
   const c = norm(raw);
   if (c.length !== 12) return showErr('Kod 12 harf/rakamdan oluşmalı.');
   myName = ($('#name').value.trim() || 'Misafir').slice(0,20);
+  try { localStorage.setItem('ad', myName); } catch {}
   myId = hex(rnd(6)); code = fmt(c);
   showErr('');
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
-    micTrack = micStream.getAudioTracks()[0];
-  } catch { /* mikrofon yoksa sadece dinleyici olarak devam */ }
   await derive(c);
+  byePayload = await enc({t:'bye', from:myId, mid:'bye'+hex(rnd(6))});
   history.replaceState(null, '', '#' + code);
   $('#join').classList.add('hidden'); $('#room').classList.remove('hidden');
   $('#shownCode').textContent = code;
-  if (!micTrack) { $('#mute').disabled = true; $('#mute').textContent = 'Mikrofon yok'; }
+  await enableMic();
   renderPeers(); renderStatus(); connectBrokers();
   setInterval(() => send({t:'hello'}), 5000);
 }
@@ -283,8 +357,9 @@ $('#go').onclick = () => join($('#code').value);
 $('#code').onkeydown = e => { if (e.key === 'Enter') join($('#code').value); };
 $('#mute').onclick = toggleMute;
 $('#share').onclick = toggleScreen;
+$('#tap').onclick = unlockAudio;
 $('#copy').onclick = async () => {
-  await navigator.clipboard.writeText(location.href.split('#')[0] + '#' + code);
+  try { await navigator.clipboard.writeText(location.href.split('#')[0] + '#' + code); } catch {}
   $('#copy').textContent = 'Kopyalandı';
   setTimeout(() => $('#copy').textContent = 'Davet linkini kopyala', 1500);
 };
@@ -293,10 +368,26 @@ $('#leave').onclick = async () => {
   history.replaceState(null, '', location.pathname);
   setTimeout(() => location.reload(), 200);
 };
-window.addEventListener('beforeunload', () => { try { send({t:'bye'}); } catch{} });
+// Sekme kapanırken/yenilenirken önceden şifrelenmiş "ayrıldım" mesajını anında yolla
+window.addEventListener('pagehide', () => {
+  if (byePayload) clients.forEach(c => { try { c.connected && c.publish(topic, byePayload); } catch {} });
+});
 
-// Davet linkiyle gelindiyse kodu doldur
-if (location.hash.length > 1) $('#code').value = location.hash.slice(1);
+// Telefonlarda ekran paylaşımı tarayıcı tarafından desteklenmiyor
+if (!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) {
+  $('#share').disabled = true;
+  $('#share').textContent = 'Ekran paylaşımı bu cihazda yok';
+  $('#share').title = 'Telefon tarayıcıları ekran paylaşımını desteklemiyor. Başkalarının paylaşımını izleyebilirsin.';
+}
+
+// ---- Açılış: kayıtlı ad + linkteki kod varsa otomatik odaya dön -------------
+let savedName = ''; try { savedName = localStorage.getItem('ad') || ''; } catch {}
+if (savedName) $('#name').value = savedName;
+const hashCode = norm(location.hash.slice(1));
+if (hashCode.length === 12) {
+  $('#code').value = fmt(hashCode);
+  if (savedName) join(hashCode);
+}
 </script>
 </body>
 </html>
