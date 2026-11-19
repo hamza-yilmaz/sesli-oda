@@ -187,10 +187,11 @@ select:focus{border-color:var(--pri)}
 
 <script>
 const $=id=>document.getElementById(id);
-const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]};
+const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'},{urls:'stun:stun2.l.google.com:19302'},
+  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]};
 const PREFIX='sesliodayilmaz-';
 
-let peer,myName,myPeerId,roomCode,isHost=false;
+let peer,myName,myPeerId,roomCode,isHost=false,isCreator=false,joinTimer=null;
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
 let screenStream=null, activeScreenPeerId=null;
@@ -498,9 +499,10 @@ function onData(id,m){
     c.name=m.name;
     updateMemberList();
     renderUsers();
+    clearTimeout(joinTimer);
     playBeep('in');
     addMsg('sistem',m.name+' odaya katıldı');
-    if(isHost){
+    if(isCreator){
       const others=Object.keys(conns).filter(x=>x!==id&&conns[x].name);
       c.data.send({t:'peers',ids:others});
     }
@@ -582,12 +584,25 @@ function setupCall(id,call){
     audioCtx.createMediaStreamSource(st).connect(an);c.analyser=an;
     tuneSenders();
   });
-  call.on('close',()=>dropPeer(id));
+  const onCallEnd=()=>{
+    const c=conns[id];if(!c||c.call!==call)return;
+    if(c.audioEl){c.audioEl.srcObject=null;c.audioEl=null}
+    c.analyser=null;c.call=null;
+    if(c.data&&c.data.open){
+      c.retry=(c.retry||0)+1;
+      if(c.retry<=4&&myPeerId<id&&outStream){
+        setTimeout(()=>{const cc=conns[id];if(cc&&!cc.call&&cc.data&&cc.data.open)setupCall(id,peer.call(id,outStream))},1500);
+      }
+    }else{dropPeer(id)}
+  };
+  call.on('close',onCallEnd);
+  call.on('error',onCallEnd);
 }
 
 function dropPeer(id){
   const c=conns[id];if(!c)return;
   const wasInRoom = !!c.name;
+  delete conns[id];
 
   if(c.audioEl){c.audioEl.srcObject=null}
   if(activeScreenPeerId===id){
@@ -597,8 +612,6 @@ function dropPeer(id){
   }
   try{c.call&&c.call.close()}catch(e){}
   try{c.data&&c.data.close()}catch(e){}
-
-  delete conns[id];
 
   if(wasInRoom){
     playBeep('out');
@@ -612,7 +625,7 @@ function dropPeer(id){
 setInterval(()=>{
   const now=Date.now();
   for(const [id,c] of Object.entries(conns)){
-    if(c.name && (now - (c.lastSeen||now) > 10000)){
+    if(c.name && !(c.data&&c.data.open) && (now - (c.lastSeen||now) > 30000)){
       dropPeer(id);
       continue;
     }
@@ -661,7 +674,7 @@ $('createBtn').onclick=async()=>{
   try{
     msg('mikrofon açılıyor...',true);await startMic();
     roomCode=genCode();
-    isHost=true;
+    isHost=true;isCreator=true;
     myPeerId=PREFIX+roomCode;
     await initPeer(myPeerId);
     enterRoom();
@@ -685,7 +698,7 @@ $('joinBtn').onclick=async()=>{
     enterRoom();
     const hostId=PREFIX+roomCode;
     connectTo(hostId);
-    setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odaya bağlanılamadı. Kodu kontrol et.');location.reload()}},12000);
+    joinTimer=setTimeout(()=>{if(!conns[hostId]||!conns[hostId].name){alert('Odaya bağlanılamadı. Kodu kontrol et.');location.reload()}},20000);
   }catch(e){msg('hata: '+(e.type||e.message||e))}
 };
 
