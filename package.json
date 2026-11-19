@@ -1,0 +1,16 @@
+{
+  "name": "sesli-oda",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Sunucusuz, tarayıcıdan tarayıcıya sesli sohbet odası",
+  "type": "module",
+  "scripts": {
+    "vendor": "node scripts/build-vendor.mjs",
+    "dev": "npx --yes serve@14.2.4 -l 5173 ."
+  },
+  "devDependencies": {
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
+    "esbuild": "0.25.0",
+    "trystero": "0.26.0"
+  }
+}
