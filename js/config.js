@@ -24,6 +24,10 @@ export const NOSTR_RELAYS = [
   'wss://relay.grigic.org',
 ];
 
+// Lobideki oda listesi (dizin) için kullanılan röleler. Odalar bu rölelere kısa
+// ömürlü, saklanmayan Nostr olaylarıyla duyurulur.
+export const DIRECTORY_RELAYS = NOSTR_RELAYS.slice(0, 4);
+
 // Kendi TURN sunucunuz (coturn, Cloudflare Realtime TURN, Metered vb.) varsa
 // buraya ekleyin. Simetrik NAT arkasındaki (mobil veri, kurumsal ağ) kişilerin
 // bağlanabilmesi için gereklidir. Kullanıcılar ayarlardan kendi TURN bilgisini

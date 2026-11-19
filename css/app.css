@@ -218,6 +218,23 @@ select.input { appearance: none; cursor: pointer; padding-right: 36px;
 
 .footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 18px clamp(16px, 4vw, 40px); border-top: 2px solid var(--line); font-size: 13px; font-weight: 500; }
 
+.switch-row.small { font-size: 14px; min-height: 34px; }
+.switch-row.small .switch { width: 46px; height: 28px; }
+.switch-row.small .switch::after { width: 16px; height: 16px; }
+.switch-row.small .switch:checked::after { left: calc(100% - 20px); }
+
+.rooms { grid-column: 1 / -1; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.rooms-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rooms-head h2 { font-size: 20px; font-weight: 800; }
+.rooms-head .muted { font-size: 13px; }
+.room-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.room-item { display: flex; align-items: center; gap: 12px; padding: 12px; border: 2px solid var(--line); border-radius: var(--radius); background: var(--field); min-width: 0; }
+.room-item .ri-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.room-item .ri-name { font-weight: 700; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-item .ri-name .ic { width: 16px; height: 16px; color: var(--muted); }
+.room-item .ri-sub { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-list-empty { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 10px; }
+
 /* ---------- ODA ---------- */
 .room {
   height: 100vh; height: 100dvh;

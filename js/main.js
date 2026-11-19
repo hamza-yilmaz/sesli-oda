@@ -4,6 +4,7 @@ import {engine} from './audio.js';
 import {Session, roomKey, relayStatus, selfId} from './room.js';
 import {SFX, playBeep, playSfx} from './sounds.js';
 import {DEFAULT_ROOM, MAX_MEMBERS} from './config.js';
+import {directory} from './directory.js';
 
 // ---------------------------------------------------------------- durum
 let session = null; // lobide göz atma ya da odadaki oturum (aynı nesne)
@@ -176,6 +177,7 @@ $('joinForm').onsubmit = async (e) => {
   const roomName = currentRoomInput();
   const pw = $('pwIn').value;
   settings.name = name;
+  settings.listRoom = $('listChk').checked;
   saveSettings();
 
   const btn = $('joinBtn');
@@ -206,8 +208,10 @@ $('joinForm').onsubmit = async (e) => {
   rememberRoom(roomName);
   history.replaceState(null, '', `#oda=${encodeURIComponent(roomName)}`);
   enterRoomView(name, roomName, !!pw);
+  session.me.listed = settings.listRoom;
   session.enter(name, engine.outStream);
   session.setState({muted: engine.muted, deaf: deafened});
+  scheduleAnnounce();
   btn.disabled = false;
   lobbyMsg('');
 };
@@ -216,8 +220,10 @@ $('joinForm').onsubmit = async (e) => {
 function wireSession(s) {
   const on = (type, fn) => s.addEventListener(type, (e) => s === session && fn(e.detail));
   on('roster', () => {
-    if (inRoom) updateCount();
-    else renderPreview();
+    if (inRoom) {
+      updateCount();
+      scheduleAnnounce();
+    } else renderPreview();
   });
   on('join', (p) => {
     if (!inRoom) return;
@@ -356,7 +362,10 @@ function renderPing(id) {
   const span = v.status.querySelector('.ping');
   if (!span) return;
   const st = session.connectionState(id);
-  if (!p.stream || st === 'connecting' || st === 'new') {
+  if (!p.present) {
+    span.textContent = 'yeniden bağlanıyor…';
+    span.className = 'ping mid';
+  } else if (!p.stream || st === 'connecting' || st === 'new') {
     span.textContent = 'bağlanıyor…';
     span.className = 'ping';
   } else if (st === 'disconnected' || st === 'failed') {
@@ -623,6 +632,12 @@ $('leaveBtn').onclick = () => {
 };
 
 async function leaveRoom() {
+  // Odada bizden başka bağlı kimse kalmadıysa listeden düşür; kalanlar varsa
+  // yeni duyurucu bizim ayrılışımızı görünce odayı güncel sayıyla ilan eder.
+  if (session && announcing && !session.members().some((p) => p.present)) {
+    directory.withdraw(session.roomName, !!session.password);
+  }
+  announcing = false;
   inRoom = false;
   views.forEach((v) => v.remote?.dispose());
   views.clear();
@@ -635,6 +650,8 @@ async function leaveRoom() {
   $('app').classList.remove('chat-open');
   $('lobby').hidden = false;
   document.title = 'Sesli Oda';
+  renderRoomList();
+  directory.query();
   titleCount = 0;
   schedulePeek();
 }
@@ -848,6 +865,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('focus', keepAlive);
+window.addEventListener('pagehide', () => session?.goodbye());
 document.addEventListener('pointerdown', keepAlive, {passive: true});
 setInterval(keepAlive, 5000);
 
@@ -865,6 +883,79 @@ setInterval(renderNet, 2000);
 window.addEventListener('offline', () => toast('İnternet bağlantısı koptu. Geri gelince otomatik yeniden bağlanılacak.', {error: true, ms: 6000}));
 window.addEventListener('online', () => toast('İnternet geri geldi.'));
 
+// ---------------------------------------------------------------- oda dizini
+let announcing = false;
+let announceTimer = null;
+
+// Odadaki bağlı üyeler arasında peer kimliği en küçük olan odayı duyurur.
+function roomAnnouncement() {
+  if (!inRoom || !session) return null;
+  const present = session.members().filter((p) => p.present);
+  if ([selfId, ...present.map((p) => p.id)].sort()[0] !== selfId) return null;
+  if (!session.me.listed || present.some((p) => !p.listed)) return null;
+  return {
+    name: session.roomName,
+    locked: !!session.password,
+    count: present.length + 1,
+    names: [settings.name, ...present.map((p) => p.name)],
+  };
+}
+directory.provider = roomAnnouncement;
+
+function scheduleAnnounce() {
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => {
+    const info = roomAnnouncement();
+    if (info) directory.announce(true);
+    else if (announcing && session) directory.withdraw(session.roomName, !!session.password); // biri listelenmeyi kapattı
+    announcing = !!info;
+  }, 800);
+}
+
+function renderRoomList() {
+  const box = $('roomList');
+  const rooms = directory.list();
+  box.replaceChildren();
+  $('roomsNote').textContent = directory.openCount ? 'Canlı güncellenir' : 'Ağa bağlanılıyor…';
+  if (!rooms.length) {
+    box.append(el('p', {class: 'room-list-empty'},
+      directory.openCount ? icon('users') : el('span', {class: 'spinner'}),
+      directory.openCount ? 'Şu an listelenen açık oda yok. Bir oda adı yaz ve ilk sen gir!' : 'Odalar aranıyor…'));
+    return;
+  }
+  for (const r of rooms) {
+    const sub = r.locked ? `${r.count} kişi · şifreli` : `${r.count} kişi · ${r.names.join(', ')}`;
+    box.append(el('div', {class: 'room-item'},
+      el('div', {class: 'ri-main'},
+        el('span', {class: 'ri-name'}, r.locked ? icon('lock') : null, `#${r.name}`),
+        el('span', {class: 'ri-sub', title: sub, text: sub})),
+      el('button', {class: 'btn sm', type: 'button', text: 'Seç', 'aria-label': `#${r.name} odasını seç`, onclick: () => pickRoom(r)}),
+    ));
+  }
+}
+
+function pickRoom(r) {
+  $('roomIn').value = r.name;
+  if (r.locked) {
+    $('pwBox').open = true;
+    $('pwIn').value = '';
+    $('pwIn').focus();
+    lobbyMsg('Bu oda şifreli. Şifreyi yazıp "Odaya gir"e bas.', true);
+  } else {
+    if ($('pwIn').value) $('pwIn').value = '';
+    $('pwBox').open = false;
+    lobbyMsg('');
+    ($('nameIn').value.trim() ? $('joinBtn') : $('nameIn')).focus();
+  }
+  schedulePeek();
+  renderRecent();
+  $('joinForm').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
+directory.addEventListener('change', () => !inRoom && renderRoomList());
+setInterval(() => !inRoom && renderRoomList(), 5000);
+setInterval(() => !inRoom && directory.query(), 30000);
+
 // ---------------------------------------------------------------- başlangıç
 setBtn($('lobbySettingsBtn'), 'sliders', 'Ses ayarları ve mikrofon testi');
 setBtn($('sfxBtn'), 'music', 'Soundboard');
@@ -880,6 +971,8 @@ applyTheme();
 updateControls();
 
 $('nameIn').value = settings.name;
+$('listChk').checked = settings.listRoom !== false;
+renderRoomList();
 $('roomIn').value = readRoomFromHash() || settings.recentRooms[0] || '';
 renderRecent();
 window.addEventListener('hashchange', () => {
@@ -887,11 +980,13 @@ window.addEventListener('hashchange', () => {
   const r = readRoomFromHash();
   if (r) { $('roomIn').value = r; schedulePeek(); renderRecent(); }
 });
+$('listChk').addEventListener('change', () => { settings.listRoom = $('listChk').checked; saveSettings(); });
 
 if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection || !window.AudioWorkletNode) {
   lobbyMsg('Bu tarayıcı ya da bağlantı desteklenmiyor. Güncel bir tarayıcıyla HTTPS üzerinden aç.');
   $('joinBtn').disabled = true;
 } else {
   peek();
+  directory.start();
 }
 (settings.name ? $('joinBtn') : $('nameIn')).focus({preventScroll: true});

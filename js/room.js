@@ -18,6 +18,9 @@ export {selfId};
 
 const PROTO = 2;
 const MAX_ACTION_BYTES = 4096;
+// Bağlantı kurulurken (özellikle mobil ağlarda) WebRTC bağlantısı birkaç kez
+// kopup yeniden kurulabilir. Bu süre içinde geri gelen kişi "ayrıldı" sayılmaz.
+const LEAVE_GRACE_MS = 6000;
 
 export async function roomKey(name, password) {
   if (!password) return name;
@@ -50,7 +53,7 @@ export function relayStatus() {
 export class Session extends EventTarget {
   peers = new Map();
   member = false;
-  me = {name: '', muted: false, deaf: false};
+  me = {name: '', muted: false, deaf: false, listed: true};
   outStream = null;
   closed = false;
 
@@ -94,10 +97,30 @@ export class Session extends EventTarget {
     this.aSfx = mk('sfx');
 
     this.room.onPeerJoin = (id) => {
-      this.#peer(id);
+      const p = this.#peer(id);
+      const wasAway = !p.present;
+      clearTimeout(p.leaveTimer);
+      p.leaveTimer = null;
+      p.present = true;
+      // Yeni bir WebRTC bağlantısı: eski bağlantıya eklenen ses bunda yok, yeniden gönder
+      p.sentStream = false;
       this.aHi.send(this.#hi(), {target: id}).catch(() => {});
+      this.#sendStreamTo(p);
+      if (wasAway && p.member) this.#emit('update', p);
     };
-    this.room.onPeerLeave = (id) => this.#drop(id);
+    this.room.onPeerLeave = (id) => {
+      const p = this.peers.get(id);
+      if (!p) return;
+      p.present = false;
+      p.sentStream = false;
+      p.ping = null;
+      if (!p.member) return this.#drop(id);
+      clearTimeout(p.leaveTimer);
+      p.leaveTimer = setTimeout(() => {
+        if (!p.present && this.peers.get(id) === p) this.#drop(id);
+      }, LEAVE_GRACE_MS);
+      this.#emit('update', p); // arayüz "yeniden bağlanıyor…" göstersin
+    };
     this.room.onPeerStream = (stream, id) => {
       const p = this.#peer(id);
       p.stream = stream;
@@ -133,6 +156,9 @@ export class Session extends EventTarget {
         member: false,
         muted: false,
         deaf: false,
+        listed: true,
+        present: true,
+        leaveTimer: null,
         stream: null,
         sentStream: false,
         typingUntil: 0,
@@ -147,7 +173,7 @@ export class Session extends EventTarget {
   }
 
   #hi() {
-    return {v: PROTO, n: this.me.name || '', m: this.member, mu: this.me.muted, df: this.me.deaf};
+    return {v: PROTO, n: this.me.name || '', m: this.member, mu: this.me.muted, df: this.me.deaf, ls: this.me.listed};
   }
 
   #onHi(id, d) {
@@ -159,6 +185,7 @@ export class Session extends EventTarget {
     p.name = name;
     p.muted = d.mu === true;
     p.deaf = d.df === true;
+    p.listed = d.ls !== false;
 
     if (wantsMember && !wasMember) {
       p.member = true;
@@ -169,13 +196,14 @@ export class Session extends EventTarget {
       p.member = false;
       this.#emit('leave', p);
     } else {
+      this.#sendStreamTo(p);
       this.#emit('update', p);
     }
     this.#emit('roster');
   }
 
   #sendStreamTo(p) {
-    if (!this.member || !this.outStream || p.sentStream || !p.member) return;
+    if (!this.member || !this.outStream || p.sentStream || !p.member || !p.present) return;
     p.sentStream = true;
     try {
       this.room.addStream(this.outStream, {target: p.id});
@@ -203,6 +231,7 @@ export class Session extends EventTarget {
   #drop(id) {
     const p = this.peers.get(id);
     if (!p) return;
+    clearTimeout(p.leaveTimer);
     this.peers.delete(id);
     if (p.member) this.#emit('leave', p);
     this.#emit('roster');
@@ -216,8 +245,9 @@ export class Session extends EventTarget {
     return this.members().length + (this.member ? 1 : 0);
   }
 
+  // Şu an bağlı olan üyeler (tolerans süresindekiler hariç): mesajlar yalnızca bunlara gider
   #memberIds() {
-    return this.members().map((p) => p.id);
+    return this.members().filter((p) => p.present).map((p) => p.id);
   }
 
   // Lobiden odaya geç: sesi diğer üyelere gönder ve kendini duyur
@@ -255,7 +285,7 @@ export class Session extends EventTarget {
 
   async pingAll() {
     await Promise.all(
-      this.members().map(async (p) => {
+      this.members().filter((p) => p.present).map(async (p) => {
         try {
           p.ping = await this.room.ping(p.id);
         } catch {
@@ -270,10 +300,20 @@ export class Session extends EventTarget {
     return this.room?.getPeers()[id]?.connectionState || 'new';
   }
 
+  // İsteyerek ayrılırken herkese "artık üye değilim" de: karşı taraf tolerans
+  // süresini beklemeden kişiyi hemen listeden düşürür.
+  goodbye() {
+    if (!this.member || !this.aHi) return Promise.resolve();
+    this.member = false;
+    return Promise.race([this.aHi.send(this.#hi()).catch(() => {}), new Promise((r) => setTimeout(r, 400))]);
+  }
+
   async close() {
+    await this.goodbye();
     this.closed = true;
     const room = this.room;
     this.room = null;
+    this.peers.forEach((p) => clearTimeout(p.leaveTimer));
     this.peers.clear();
     if (room) await room.leave().catch(() => {});
   }

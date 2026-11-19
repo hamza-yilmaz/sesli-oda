@@ -62,11 +62,17 @@
       </details>
 
       <div class="preview" id="preview" aria-live="polite"></div>
+      <label class="switch-row small"><span>Odayı lobideki listede göster</span><input type="checkbox" role="switch" class="switch" id="listChk"></label>
 
       <button class="btn primary lg" type="submit" id="joinBtn">Odaya gir</button>
       <div class="chips" id="recent" aria-label="Son odalar"></div>
       <p class="form-msg" id="lobbyMsg" role="alert"></p>
     </form>
+
+    <section class="card rooms" aria-labelledby="roomsTitle">
+      <div class="rooms-head"><h2 id="roomsTitle">Aktif odalar</h2><span class="muted" id="roomsNote"></span></div>
+      <div class="room-list" id="roomList"></div>
+    </section>
   </main>
 
   <footer class="footer">

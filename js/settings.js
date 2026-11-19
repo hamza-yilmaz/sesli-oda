@@ -18,6 +18,7 @@ const defaults = {
   pttKey: old.pttKey || 'Space',
   beep: old.beep ?? true,
   sfx: true,
+  listRoom: true,
   turnUrls: '',
   turnUser: '',
   turnPass: '',
