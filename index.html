@@ -10,28 +10,29 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 @view-transition{navigation:auto}
-:root{--red:#BC2C2C;--blue:#5DA4C9;--yel:#FCD758;--bg:#F5F1E3;--ink:#2C2C2C;--bw:12px}
+:root{--red:#BC2C2C;--blue:#5DA4C9;--yel:#FCD758;--ink:#2C2C2C;--bw:12px;--bg:#F5F1E3;--card:#fff;--txt:#2C2C2C;--line:#2C2C2C;--soft:#d8d2bd}
+html[data-mode="dark"]{--bg:#161616;--card:#262626;--txt:#F5F1E3;--line:#F5F1E3;--soft:#454545;color-scheme:dark}
 *{box-sizing:border-box;margin:0;padding:0;border-radius:0}
 html,body{min-height:100%}
-body{background:var(--bg);color:var(--ink);font:400 14px/1.6 'Open Sans',system-ui,sans-serif}
+body{background:var(--bg);color:var(--txt);font:400 14px/1.6 'Open Sans',system-ui,sans-serif}
 ::selection{background:var(--yel);color:var(--ink)}
 h1{font-family:Montserrat,sans-serif;font-weight:900;text-transform:uppercase;line-height:.85;letter-spacing:-.05em}
 .lbl{font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
 .dim{opacity:.6}
 .amb{color:var(--red);font-weight:700}
 .err{color:var(--red)}
-.btn{font:900 10px 'Open Sans',sans-serif;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;background:var(--ink);color:#fff;border:2px solid var(--ink);padding:10px 14px}
+.btn{font:900 10px 'Open Sans',sans-serif;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;background:var(--ink);color:#fff;border:2px solid var(--line);padding:10px 14px}
 .btn:hover,.btn:focus-visible,.btn.on{background:var(--yel);color:var(--ink);outline:0}
 .btn:active{transform:translate(2px,2px)}
 .btn.red{background:var(--red);border-color:var(--red);color:#fff}
 .btn.red:hover,.btn.red.on{background:var(--yel);color:var(--ink);border-color:var(--ink)}
 .btn.sm{padding:4px 8px;font-size:9px}
-.pr{display:flex;gap:10px;align-items:center;background:#fff;border:3px solid var(--ink);padding:6px 10px}
+.pr{display:flex;gap:10px;align-items:center;background:var(--card);border:3px solid var(--line);padding:6px 10px}
 .pr span{white-space:nowrap;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
-.pr input{flex:1;min-width:0;font:600 14px 'Open Sans',sans-serif;color:var(--ink);background:transparent;border:0;outline:0}
-.pr input::placeholder{color:#2c2c2c88;text-transform:uppercase;font-size:11px;font-weight:700}
-.pr:focus-within{background:var(--yel)}
-.win{background:#fff;border:var(--bw) solid var(--ink);display:flex;flex-direction:column;min-width:0}
+.pr input{flex:1;min-width:0;font:600 14px 'Open Sans',sans-serif;color:var(--txt);background:transparent;border:0;outline:0}
+.pr input::placeholder{color:var(--txt);opacity:.5;text-transform:uppercase;font-size:11px;font-weight:700}
+.pr:focus-within{background:var(--yel);color:var(--ink)}.pr:focus-within input{color:var(--ink)}
+.win{background:var(--card);border:var(--bw) solid var(--line);display:flex;flex-direction:column;min-width:0}
 .title{background:var(--red);color:#fff;padding:8px 12px;font:900 12px Montserrat,sans-serif;letter-spacing:.1em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .body{padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .pane{display:none}.pane.show{display:flex;flex-direction:column;gap:10px}
@@ -68,30 +69,25 @@ h1{font-family:Montserrat,sans-serif;font-weight:900;text-transform:uppercase;li
 /* oda içi */
 #app{display:none;width:100%;height:100vh;grid-template-columns:1fr 340px;gap:12px;padding:12px;background:var(--bg)}
 #left{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
-#top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--red);color:#fff;padding:10px 14px;border:3px solid var(--ink)}
+#top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--red);color:#fff;padding:10px 14px;border:3px solid var(--line)}
 #codeTxt{font:900 18px Montserrat,sans-serif;letter-spacing:-.03em;text-transform:uppercase;margin-right:8px}
 #top .btn{background:transparent;border-color:#fff;color:#fff}
 #top .btn:hover{background:var(--yel);color:var(--ink);border-color:var(--yel)}
 #top .dim{opacity:.9;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
 #centerArea{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
-#screenBox{display:none;background:var(--ink);flex-direction:column;max-height:50%}
-#screenBox.active{display:flex}
-#screenBox video{width:100%;height:100%;object-fit:contain;max-height:240px;filter:grayscale(100%);transition:filter .5s ease-in-out}
-#screenBox video:hover{filter:none}
 #users{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;align-content:start;padding:0 10px 10px 0}
-.user{background:#fff;border:2px solid #d8d2bd;display:flex;flex-direction:column;min-width:0}
-.user.speaking{border-color:var(--ink);box-shadow:8px 8px 0 var(--ink)}
-.user.sharing{border-color:var(--red);box-shadow:8px 8px 0 var(--red)}
-.user .uh{padding:6px 10px;display:flex;justify-content:space-between;gap:6px;border-bottom:2px solid #d8d2bd;font:900 10px 'Open Sans',sans-serif;letter-spacing:.1em;text-transform:uppercase;overflow:hidden;white-space:nowrap}
-.user.speaking .uh{background:var(--yel)}
-.user.sharing .uh{background:var(--red);color:#fff}
+.user{background:var(--card);border:2px solid var(--soft);display:flex;flex-direction:column;min-width:0}
+.user.speaking{border-color:var(--line);box-shadow:8px 8px 0 var(--line)}
+.user .uh{padding:6px 10px;display:flex;justify-content:space-between;gap:6px;border-bottom:2px solid var(--soft);font:900 10px 'Open Sans',sans-serif;letter-spacing:.1em;text-transform:uppercase;overflow:hidden;white-space:nowrap}
+.user.speaking .uh{background:var(--yel);color:var(--ink)}
 .user .ub{padding:10px;display:flex;flex-direction:column;gap:8px}
 .uname{font-weight:700;text-transform:uppercase}
 canvas.viz{width:100%;height:28px;background:var(--ink);display:block}
 .vol{display:flex;gap:8px;align-items:center}
 input[type=range]{flex:1;min-width:0;accent-color:var(--red);height:14px}
-#bar{background:var(--ink);padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;border:3px solid var(--ink)}
+#bar{background:var(--ink);padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;border:3px solid var(--line)}
 #bar .btn{background:transparent;border-color:#fff;color:#fff}
+#bar .btn.on{background:var(--yel);color:var(--ink);border-color:var(--yel)}
 #bar .btn:hover{background:var(--yel);color:var(--ink);border-color:var(--yel)}
 #bar .btn.red{background:var(--red);border-color:var(--red);color:#fff}
 #bar .btn.red:hover{background:var(--yel);color:var(--ink);border-color:var(--yel)}
@@ -100,16 +96,21 @@ input[type=range]{flex:1;min-width:0;accent-color:var(--red);height:14px}
 .msg{word-break:break-word}
 .msg b{color:var(--red);font-weight:900;text-transform:uppercase;font-size:11px;letter-spacing:.05em}
 #typingIndicator{padding:2px 12px;font-size:11px;min-height:22px;font-weight:600;background:var(--bg)}
-#chatForm{padding:8px;border-top:3px solid var(--ink);background:#fff}
+#chatForm{padding:8px;border-top:3px solid var(--line);background:var(--card)}
 #settings,#soundboardModal{display:none;position:fixed;inset:0;background:rgba(44,44,44,.88);align-items:center;justify-content:center;z-index:50;padding:12px}
 #settings .win,#soundboardModal .win{width:min(480px,100%);max-height:94vh;overflow:auto;box-shadow:16px 16px 0 var(--red)}
 #settings .dim{font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;opacity:1}
 .sb-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 label.chk{display:flex;gap:10px;align-items:center;cursor:pointer;text-transform:uppercase;font-size:11px;font-weight:700;letter-spacing:.05em}
 label.chk input{accent-color:var(--red);width:16px;height:16px}
-select{font:700 11px 'Open Sans',sans-serif;text-transform:uppercase;width:100%;color:var(--ink);background:#fff;border:3px solid var(--ink);padding:8px;outline:0}
-select:focus{background:var(--yel)}
+select{font:700 11px 'Open Sans',sans-serif;text-transform:uppercase;width:100%;color:var(--txt);background:var(--card);border:3px solid var(--line);padding:8px;outline:0}
+select:focus{background:var(--yel);color:var(--ink)}
 #meter{font-family:ui-monospace,Menlo,monospace;font-weight:700}
+.btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;vertical-align:middle;display:block}
+.btn.sm svg{width:14px;height:14px}
+#bar .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 14px}
+.hdr .btn{background:transparent;border-color:#fff;color:#fff;padding:6px 8px}
+.hdr .btn:hover{background:var(--yel);color:var(--ink);border-color:var(--yel)}
 @media(max-width:900px){.hero{grid-template-columns:1fr;gap:40px;padding:40px 20px 56px}.nav{display:none}}
 @media(max-width:760px){:root{--bw:6px}#app{grid-template-columns:1fr;grid-template-rows:1fr 250px}.ftr .cols{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
@@ -118,7 +119,7 @@ select:focus{background:var(--yel)}
 <body>
 
 <div id="lobby">
-  <header class="hdr"><span class="logo">SESLİ ODA</span><span class="nav">SUNUCUSUZ ★ ÜCRETSİZ ★ HESAPSIZ</span></header>
+  <header class="hdr"><span class="logo">SESLİ ODA</span><span class="nav">SUNUCUSUZ ★ ÜCRETSİZ ★ HESAPSIZ</span><button class="btn sm" id="modeLobby" title="Açık / koyu mod"></button></header>
   <section class="hero">
     <div class="wm">ODA</div>
     <div style="position:relative;z-index:1">
@@ -157,21 +158,16 @@ select:focus{background:var(--yel)}
       <span class="dim" id="status"></span>
     </div>
     <div id="centerArea">
-      <div class="win" id="screenBox">
-        <div class="title"><span id="screenTitle">EKRAN PAYLAŞIMI</span> <button class="btn sm red" id="stopScreenBtn">kapat</button></div>
-        <video id="screenVideo" autoplay playsinline></video>
-      </div>
       <div id="users"></div>
     </div>
     <div id="bar">
-      <button class="btn" id="muteBtn">mikrofon: açık</button>
-      <button class="btn" id="deafBtn">ses: açık</button>
-      <button class="btn" id="pttBtn" style="display:none">PTT: kapalı</button>
-      <button class="btn" id="screenBtn">ekran paylaş</button>
-      <button class="btn" id="sbOpenBtn">soundboard</button>
-      <button class="btn" id="setBtn">ses ayarları</button>
-      <button class="btn red" id="leaveBtn">ayrıl</button>
-      <button class="btn" id="cancelLeave" style="display:none">hayır</button>
+      <button class="btn" id="muteBtn"></button>
+      <button class="btn" id="deafBtn"></button>
+      <button class="btn" id="pttBtn" title="Bas-konuş" style="display:none"></button>
+      <button class="btn" id="sbOpenBtn"></button>
+      <button class="btn" id="setBtn"></button>
+      <button class="btn red" id="leaveBtn"></button>
+      <button class="btn" id="cancelLeave" style="display:none"></button>
     </div>
   </div>
   <div class="win" id="right">
@@ -186,6 +182,7 @@ select:focus{background:var(--yel)}
   <div class="win">
     <div class="title"><span>SİSTEM AYARLARI</span></div>
     <div class="body">
+      <div><div class="dim">GÖRÜNÜM</div><select id="modeSel"><option value="light">AÇIK MOD</option><option value="dark">KOYU MOD</option></select></div>
       <label class="chk"><input type="checkbox" id="nsChk" checked> gürültü bastırma (arka plan sesleri)</label>
       <label class="chk"><input type="checkbox" id="ecChk" checked> yankı engelleme</label>
       <label class="chk"><input type="checkbox" id="agcChk" checked> otomatik ses seviyesi</label>
@@ -223,6 +220,22 @@ select:focus{background:var(--yel)}
 
 <script>
 const $=id=>document.getElementById(id);
+const IC={
+ mic:'<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+ micoff:'<line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/>',
+ vol:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+ volx:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>',
+ kbd:'<rect x="2" y="6" width="20" height="12"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>',
+ music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+ sliders:'<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
+ logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+ check:'<polyline points="20 6 9 17 4 12"/>',
+ x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+ sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+ moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'
+};
+function ic(n){return '<svg viewBox="0 0 24 24" aria-hidden="true">'+IC[n]+'</svg>'}
+function setPttLabel(){$('pttBtn').innerHTML=ic('kbd')+' '+settings.pttKey.replace(/^(Key|Digit)/,'').toUpperCase()}
 const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'},{urls:'stun:stun2.l.google.com:19302'},
   {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]};
 const PREFIX='sesliodayilmaz-';
@@ -233,7 +246,6 @@ let fixedRoom=null,keeper=null,keeperOwner=null,probePeer=null,roomState={};
 ROOMS.forEach(r=>roomState[r]='...');
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
-let screenStream=null, activeScreenPeerId=null;
 let conns={};
 let memberList=[];
 let typingUsers=new Set();
@@ -243,7 +255,7 @@ let savedData={};
 try{savedData=JSON.parse(localStorage.getItem('sesli_oda_cfg')||'{}')}catch(e){}
 
 let settings={
-  theme:savedData.theme||'',
+  mode:savedData.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),
   ns:savedData.ns??true,
   ec:savedData.ec??true,
   agc:savedData.agc??true,
@@ -258,12 +270,17 @@ let settings={
 };
 
 if(savedData.name)$('nameIn').value=savedData.name;
+function applyMode(m){
+  settings.mode=m;document.documentElement.dataset.mode=m;
+  $('modeLobby').innerHTML=ic(m==='dark'?'sun':'moon');
+  if($('modeSel'))$('modeSel').value=m;
+}
 
 function saveSettings(){
   try{
     localStorage.setItem('sesli_oda_cfg',JSON.stringify({
       name:($('nameIn').value||'').trim(),
-      theme:settings.theme,
+      mode:settings.mode,
       ns:settings.ns,ec:settings.ec,agc:settings.agc,gate:settings.gate,
       thr:settings.thr,gain:settings.gain,mic:settings.mic,spk:settings.spk,
       ptt:settings.ptt,pttKey:settings.pttKey,beep:settings.beep
@@ -461,17 +478,15 @@ function renderUsers(){
   const box=$('users');box.innerHTML='';
   const mk=(id,name,me)=>{
     const d=document.createElement('div');d.className='user';d.dataset.id=id;
-    if(id===activeScreenPeerId || (me && screenStream)) d.classList.add('sharing');
     const pingText=me?'[local]':(conns[id]?.ping!==undefined?`[${conns[id].ping}ms]`:'[...]');
-    const sharingBadge=(id===activeScreenPeerId || (me && screenStream))?' <span class="amb">[ekran]</span>':'';
     d.innerHTML=`<div class="uh"><span>${me?'SEN':name}</span><span class="dim">${pingText}</span></div>`+
-                `<div class="ub"><canvas id="viz-${id}" width="200" height="28" class="viz"></canvas><div class="uname">${name}${sharingBadge}</div></div>`;
+                `<div class="ub"><canvas id="viz-${id}" width="200" height="28" class="viz"></canvas><div class="uname">${name}</div></div>`;
     if(!me){
       const c=conns[id];
       const ctl=document.createElement('div');ctl.className='vol';
       const mb=document.createElement('button');mb.className='btn sm'+(c.localMute?' on':'');
-      mb.textContent=c.localMute?'sessiz':'ses';
-      mb.onclick=()=>{c.localMute=!c.localMute;if(c.audioEl)c.audioEl.muted=c.localMute||deafened;mb.textContent=c.localMute?'sessiz':'ses';mb.classList.toggle('on',c.localMute)};
+      mb.innerHTML=ic(c.localMute?'volx':'vol');
+      mb.onclick=()=>{c.localMute=!c.localMute;if(c.audioEl)c.audioEl.muted=c.localMute||deafened;mb.innerHTML=ic(c.localMute?'volx':'vol');mb.classList.toggle('on',c.localMute)};
       const r=document.createElement('input');r.type='range';r.min=0;r.max=100;r.value=c.vol;
       r.oninput=()=>{c.vol=+r.value;if(c.audioEl)c.audioEl.volume=c.vol/100};
       ctl.append(mb,r);d.querySelector('.ub').append(ctl);
@@ -497,9 +512,6 @@ function setupData(id,data){
   data.on('open',()=>{
     data.send({t:'hello',name:myName});
     updateMemberList();
-    if(screenStream){
-      data.send({t:'screen_start'});
-    }
   });
   data.on('data',m=>{
     if(conns[id]) conns[id].lastSeen=Date.now();
@@ -549,18 +561,6 @@ function onData(id,m){
       typingUsers.delete(c.name||'biri');
     }
     updateTypingIndicator();
-  }else if(m.t==='screen_start'){
-    activeScreenPeerId=id;
-    renderUsers();
-    addMsg('sistem', (c.name||'kullanıcı') + ' ekran paylaşımını başlattı.');
-  }else if(m.t==='screen_stop'){
-    if(activeScreenPeerId===id){
-      activeScreenPeerId=null;
-      $('screenBox').classList.remove('active');
-      $('screenVideo').srcObject=null;
-      addMsg('sistem', (c.name||'kullanıcı') + ' ekran paylaşımını sonlandırdı.');
-      renderUsers();
-    }
   }
 }
 
@@ -585,19 +585,6 @@ function setupCall(id,call){
   conns[id]=conns[id]||{vol:100,localMute:false,ping:undefined,lastSeen:Date.now()};
   conns[id].call=call;
   call.on('stream',st=>{
-    // Eğer gelen akış ekran paylaşımı ise (video track içeriyorsa)
-    if(st.getVideoTracks().length > 0){
-      activeScreenPeerId=id;
-      const vEl=$('screenVideo');
-      vEl.srcObject=st;
-      vEl.play().catch(()=>{});
-      $('screenBox').classList.add('active');
-      $('screenTitle').textContent=(conns[id]?.name||'KULLANICI').toUpperCase()+' EKRANI';
-      renderUsers();
-      return;
-    }
-
-    // Normal ses akışı
     const c=conns[id];if(c.audioEl)return;
     const a=new Audio();a.srcObject=st;a.autoplay=true;a.volume=c.vol/100;a.muted=c.localMute||deafened;
     if(settings.spk&&a.setSinkId)a.setSinkId(settings.spk).catch(()=>{});
@@ -627,11 +614,6 @@ function dropPeer(id){
   delete conns[id];
 
   if(c.audioEl){c.audioEl.srcObject=null}
-  if(activeScreenPeerId===id){
-    activeScreenPeerId=null;
-    $('screenBox').classList.remove('active');
-    $('screenVideo').srcObject=null;
-  }
   try{c.call&&c.call.close()}catch(e){}
   try{c.data&&c.data.close()}catch(e){}
 
@@ -748,7 +730,7 @@ function enterRoom(){
   $('codeTxt').textContent=(fixedRoom?'ODA: #':'ODA KODU: ')+roomCode;
   if(settings.ptt){
     $('pttBtn').style.display='';
-    $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
+    setPttLabel();
   }
   peer.on('connection',data=>{
     if(data.metadata&&data.metadata.probe){
@@ -770,47 +752,6 @@ function enterRoom(){
   renderUsers();
 }
 
-// Ekran Paylaşımı Mantığı (Özel Video Akışı)
-$('screenBtn').onclick=async()=>{
-  if(screenStream) return;
-  try{
-    screenStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
-    $('screenVideo').srcObject = screenStream;
-    $('screenBox').classList.add('active');
-    $('screenTitle').textContent='KENDİ EKRANIN';
-    $('screenBtn').classList.add('on');
-    $('screenBtn').textContent='ekran paylaşılyor';
-    renderUsers();
-
-    // Odadaki herkese ekran video akışını çağrı olarak gönder
-    Object.keys(conns).forEach(id=>{
-      if(peer && screenStream){
-        peer.call(id, screenStream);
-      }
-    });
-
-    broadcast({t:'screen_start'});
-
-    screenStream.getVideoTracks()[0].onended = ()=>stopScreenShare();
-  }catch(e){
-    console.error('Ekran paylaşımı başlatılamadı:', e);
-  }
-};
-
-function stopScreenShare(){
-  if(screenStream){
-    screenStream.getTracks().forEach(t=>t.stop());
-    screenStream=null;
-  }
-  $('screenBox').classList.remove('active');
-  $('screenVideo').srcObject=null;
-  $('screenBtn').classList.remove('on');
-  $('screenBtn').textContent='ekran paylaş';
-  broadcast({t:'screen_stop'});
-  renderUsers();
-}
-$('stopScreenBtn').onclick=stopScreenShare;
-
 // Yazışma (Typing) Bildirimi
 $('chatIn').oninput=()=>{
   if(!typingTimer){
@@ -825,14 +766,14 @@ $('chatIn').oninput=()=>{
 
 $('muteBtn').onclick=()=>{
   muted=!muted;applyGain();
-  $('muteBtn').textContent=muted?'mikrofon: kapalı':'mikrofon: açık';
+  $('muteBtn').innerHTML=ic(muted?'micoff':'mic');$('muteBtn').title=muted?'Mikrofon kapalı':'Mikrofon açık';
   $('muteBtn').classList.toggle('red',muted);
 };
 
 $('deafBtn').onclick=()=>{
   deafened=!deafened;
   Object.values(conns).forEach(c=>{if(c.audioEl)c.audioEl.muted=deafened||c.localMute});
-  $('deafBtn').textContent=deafened?'ses: kapalı':'ses: açık';
+  $('deafBtn').innerHTML=ic(deafened?'volx':'vol');$('deafBtn').title=deafened?'Ses kapalı':'Ses açık';
   $('deafBtn').classList.toggle('red',deafened);
 };
 
@@ -853,10 +794,9 @@ window.addEventListener('keyup',e=>{
 });
 
 let leaveTimer=null,leaveArmed=false;
-function disarmLeave(){leaveArmed=false;clearTimeout(leaveTimer);$('leaveBtn').textContent='ayrıl';$('cancelLeave').style.display='none'}
+function disarmLeave(){leaveArmed=false;clearTimeout(leaveTimer);$('leaveBtn').innerHTML=ic('logout');$('cancelLeave').style.display='none'}
 $('leaveBtn').onclick=()=>{
-  if(!leaveArmed){leaveArmed=true;$('leaveBtn').textContent='emin misin? evet';$('cancelLeave').style.display='';leaveTimer=setTimeout(disarmLeave,6000);return;}
-  stopScreenShare();
+  if(!leaveArmed){leaveArmed=true;$('leaveBtn').innerHTML=ic('check')+' EMİN MİSİN?';$('cancelLeave').style.display='';leaveTimer=setTimeout(disarmLeave,6000);return;}
   try{peer.destroy()}catch(e){}location.reload();
 };
 $('cancelLeave').onclick=disarmLeave;
@@ -897,6 +837,8 @@ $('setBtn').onclick=async()=>{
   $('settings').style.display='flex';
 };
 
+$('modeSel').onchange=()=>{applyMode($('modeSel').value);saveSettings()};
+$('modeLobby').onclick=()=>{applyMode(settings.mode==='dark'?'light':'dark');saveSettings()};
 $('pttChk').onchange=()=>{$('pttKeyBox').style.display=$('pttChk').checked?'flex':'none'};
 $('gateRange').oninput=()=>{settings.thr=+$('gateRange').value};
 $('gainRange').oninput=()=>{settings.gain=+$('gainRange').value;applyGain()};
@@ -914,10 +856,18 @@ $('applyBtn').onclick=async()=>{
   Object.values(conns).forEach(c=>{if(c.audioEl&&c.audioEl.setSinkId&&settings.spk)c.audioEl.setSinkId(settings.spk).catch(()=>{})});
   if(roomCode){
     $('pttBtn').style.display=settings.ptt?'':'none';
-    $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
+    setPttLabel();
   }
   applyGain();$('settings').style.display='none';
 };
+$('muteBtn').innerHTML=ic('mic');$('muteBtn').title='Mikrofon açık';
+$('deafBtn').innerHTML=ic('vol');$('deafBtn').title='Ses açık';
+$('pttBtn').innerHTML=ic('kbd');
+$('sbOpenBtn').innerHTML=ic('music');$('sbOpenBtn').title='Soundboard';
+$('setBtn').innerHTML=ic('sliders');$('setBtn').title='Ses ayarları';
+$('leaveBtn').innerHTML=ic('logout');$('leaveBtn').title='Ayrıl';
+$('cancelLeave').innerHTML=ic('x');$('cancelLeave').title='Vazgeç';
+applyMode(settings.mode);
 </script>
 </body>
 </html>
