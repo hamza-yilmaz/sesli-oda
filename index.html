@@ -89,10 +89,17 @@ select:focus{border-color:var(--pri)}
     <div class="dim">================================</div>
     <label class="pr"><span>user@oda:~$ ad</span><input type="text" id="nameIn" placeholder="adını yaz" maxlength="20" autocomplete="off"></label>
     <div class="tabs">
-      <button class="btn on" id="tabCreate">yeni oda</button>
-      <button class="btn" id="tabJoin">mevcut oda</button>
+      <button class="btn on" id="tabRooms">odalar</button>
+      <button class="btn" id="tabCreate">özel oda</button>
+      <button class="btn" id="tabJoin">kodla gir</button>
     </div>
-    <div class="pane show" id="paneCreate">
+    <div class="pane show" id="paneRooms">
+      <div class="amb">&gt; --sabit-odalar</div>
+      <div class="dim">Bir odaya gir. Boşsa sen açarsın, doluysa katılırsın.</div>
+      <div id="roomList"></div>
+      <div><button class="btn sm" id="refreshRooms">yenile</button></div>
+    </div>
+    <div class="pane" id="paneCreate">
       <div class="amb">&gt; --yeni-oda</div>
       <div class="dim">6 haneli bir oda kodu üretilir. Kodu arkadaşlarına gönder, onlar "mevcut oda" sekmesinden girsin.</div>
       <div><button class="btn" id="createBtn">kur</button></div>
@@ -192,6 +199,9 @@ const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l
 const PREFIX='sesliodayilmaz-';
 
 let peer,myName,myPeerId,roomCode,isHost=false,isCreator=false,joinTimer=null;
+const ROOMS=['genel','oyun','sohbet','film'];   // oda isimlerini buradan değiştir
+let fixedRoom=null,keeper=null,keeperOwner=null,probePeer=null,roomState={};
+ROOMS.forEach(r=>roomState[r]='...');
 let rawStream,outStream,audioCtx,srcNode,gainNode,analyser,dest;
 let muted=false,deafened=false,gateOpen=true,pttActive=false,pttPressed=false;
 let screenStream=null, activeScreenPeerId=null;
@@ -227,7 +237,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(codeParam){
     $('codeIn').value=codeParam.trim().replace(PREFIX,'');
     showTab('join');
-  }
+  }else{showTab('rooms');}
 });
 
 function saveSettings(){
@@ -252,14 +262,17 @@ function msg(t,ok){$('lobbyMsg').textContent=t?((ok?'[OK] ':'[ERR] ')+t):''}
 })();
 
 function showTab(which){
-  const create=which==='create';
-  $('tabCreate').classList.toggle('on',create);
-  $('tabJoin').classList.toggle('on',!create);
-  $('paneCreate').classList.toggle('show',create);
-  $('paneJoin').classList.toggle('show',!create);
+  ['Rooms','Create','Join'].forEach(n=>{
+    const on=which===n.toLowerCase();
+    $('tab'+n).classList.toggle('on',on);
+    $('pane'+n).classList.toggle('show',on);
+  });
   msg('');
-  if(!create)setTimeout(()=>$('codeIn').focus(),0);
+  if(which==='join')setTimeout(()=>$('codeIn').focus(),0);
+  if(which==='rooms')probeRooms();
 }
+$('tabRooms').onclick=()=>showTab('rooms');
+$('refreshRooms').onclick=()=>probeRooms();
 $('tabCreate').onclick=()=>showTab('create');
 $('tabJoin').onclick=()=>showTab('join');
 $('codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('joinBtn').click()});
@@ -508,6 +521,13 @@ function onData(id,m){
     }
   }else if(m.t==='peers'){
     m.ids.forEach(pid=>{if(!conns[pid] && pid!==myPeerId)connectTo(pid)});
+  }else if(m.t==='keeper'){
+    keeperOwner=m.id;
+  }else if(m.t==='redirect'){
+    clearTimeout(joinTimer);
+    m.ids.forEach(pid=>{if(pid!==myPeerId&&!conns[pid])connectTo(pid)});
+    const cc=conns[id];
+    if(cc){delete conns[id];try{cc.data.close()}catch(e){}try{cc.call&&cc.call.close()}catch(e){}}
   }else if(m.t==='chat'){
     addMsg(c.name||'?',m.text);
   }else if(m.t==='sound'){
@@ -620,6 +640,7 @@ function dropPeer(id){
 
   updateMemberList();
   renderUsers();
+  if(fixedRoom&&(id===roomId(fixedRoom)||id===keeperOwner))electKeeper();
 }
 
 setInterval(()=>{
@@ -636,6 +657,77 @@ setInterval(()=>{
   }
 },3000);
 
+function roomId(r){return PREFIX+'r-'+r}
+function renderRooms(){
+  const box=$('roomList');box.innerHTML='';
+  ROOMS.forEach(r=>{
+    const n=roomState[r];
+    const txt=n==='...'?'[ ... ]':n==='?'?'[ ? ]':n===0?'[ boş ]':'[ '+n+' kişi ]';
+    const row=document.createElement('div');row.className='pr';
+    row.innerHTML='<span>#'+r+'</span><span class="dim" style="flex:1;overflow:hidden;white-space:nowrap">'+'.'.repeat(40)+'</span><span class="'+(n>0?'amb':'dim')+'">'+txt+'</span>';
+    const b=document.createElement('button');b.className='btn sm';b.textContent='gir';b.onclick=()=>enterFixed(r);
+    row.append(b);box.append(row);
+  });
+}
+function probeRooms(){
+  if(!window.Peer||peer)return;
+  ROOMS.forEach(r=>roomState[r]='...');renderRooms();
+  if(probePeer){try{probePeer.destroy()}catch(e){}}
+  const p=new Peer(undefined,{config:ICE});probePeer=p;
+  p.on('open',()=>{
+    ROOMS.forEach(r=>{
+      const c=p.connect(roomId(r),{metadata:{probe:1}});
+      c.on('data',m=>{if(m.t==='info'){roomState[r]=m.count;renderRooms();try{c.close()}catch(e){}}});
+    });
+    setTimeout(()=>{ROOMS.forEach(r=>{if(roomState[r]==='...'){roomState[r]='?'}});renderRooms()},7000);
+  });
+  p.on('error',e=>{
+    const m=e.message||'';
+    ROOMS.forEach(r=>{if(m.includes(roomId(r))){roomState[r]=0;renderRooms()}});
+  });
+}
+setInterval(()=>{if(!peer&&$('paneRooms').classList.contains('show'))probeRooms()},8000);
+renderRooms();
+
+async function enterFixed(r){
+  myName=($('nameIn').value||'').trim();if(!myName)return msg('önce adını yaz.');
+  saveSettings();
+  try{
+    msg('mikrofon açılıyor...',true);await startMic();
+    roomCode=r;fixedRoom=r;
+    try{
+      await initPeer(roomId(r));
+      isHost=true;isCreator=true;enterRoom();
+    }catch(e){
+      if(!e||e.type!=='unavailable-id')throw e;
+      try{peer.destroy()}catch(_){}
+      await initPeer();
+      isHost=false;isCreator=false;enterRoom();
+      connectTo(roomId(r));
+      joinTimer=setTimeout(()=>{if(!Object.values(conns).some(c=>c.name)){alert('Odaya bağlanılamadı.');location.reload()}},20000);
+    }
+  }catch(e){fixedRoom=null;msg('hata: '+(e.type||e.message||e))}
+}
+
+// oda sahibi çıkınca odayı ayakta tutan yedek kayıt
+function electKeeper(){
+  if(!fixedRoom||keeper)return;
+  const alive=[myPeerId,...Object.keys(conns).filter(x=>conns[x].name)].sort();
+  if(alive[0]===myPeerId)becomeKeeper(0);
+}
+function becomeKeeper(tries){
+  const k=new Peer(roomId(fixedRoom),{config:ICE});
+  k.on('open',()=>{keeper=k;keeperOwner=myPeerId;broadcast({t:'keeper',id:myPeerId});addMsg('sistem','oda artık sende kayıtlı')});
+  k.on('connection',d=>{
+    d.on('open',()=>{
+      const ids=[myPeerId,...Object.keys(conns).filter(x=>conns[x].name)];
+      d.send(d.metadata&&d.metadata.probe?{t:'info',count:ids.length}:{t:'redirect',ids});
+      setTimeout(()=>{try{d.close()}catch(e){}},800);
+    });
+  });
+  k.on('error',e=>{if(e.type==='unavailable-id'&&tries<5){try{k.destroy()}catch(_){}setTimeout(()=>{if(!keeper)becomeKeeper(tries+1)},2000)}});
+}
+
 function initPeer(id){
   return new Promise((res,rej)=>{
     peer=new Peer(id,{config:ICE});
@@ -649,12 +741,19 @@ function initPeer(id){
 
 function enterRoom(){
   $('lobby').style.display='none';$('app').style.display='grid';
-  $('codeTxt').textContent='ODA KODU: '+roomCode;
+  if(probePeer){try{probePeer.destroy()}catch(e){}probePeer=null}
+  $('codeTxt').textContent=(fixedRoom?'ODA: #':'ODA KODU: ')+roomCode;
   if(settings.ptt){
     $('pttBtn').style.display='';
     $('pttBtn').textContent='PTT: [ '+settings.pttKey.toUpperCase()+' ]';
   }
-  peer.on('connection',data=>setupData(data.peer,data));
+  peer.on('connection',data=>{
+    if(data.metadata&&data.metadata.probe){
+      data.on('open',()=>{data.send({t:'info',count:Object.keys(conns).filter(x=>conns[x].name).length+1});setTimeout(()=>{try{data.close()}catch(e){}},800)});
+      return;
+    }
+    setupData(data.peer,data);
+  });
   peer.on('call',call=>{
     call.answer(outStream);
     setupCall(call.peer,call);
@@ -691,6 +790,7 @@ $('joinBtn').onclick=async()=>{
   }
   roomCode=rawCode.replace(PREFIX,'');
   if(!myName)return msg('önce adını yaz.');if(!roomCode)return msg('oda kodunu yaz.');
+  if(ROOMS.includes(roomCode))return enterFixed(roomCode);
   saveSettings();
   try{
     msg('mikrofon açılıyor...',true);await startMic();
